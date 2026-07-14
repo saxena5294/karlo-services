@@ -83,18 +83,20 @@ const seedServices = async () => {
 
     console.log(`[services seed] Collection: ${Service.collection.name}`);
 
-    await Service.deleteMany({});
-    const createdServices = await Service.insertMany(services);
+    const result = await Service.bulkWrite(
+      services.map((service) => ({
+        updateOne: {
+          filter: { slug: service.slug },
+          update: { $setOnInsert: service },
+          upsert: true,
+        },
+      }))
+    );
     const servicesCount = await Service.countDocuments();
 
-    console.log(`[services seed] Inserted: ${createdServices.length}`);
-    console.log(`[services seed] Services count after insert: ${servicesCount}`);
-
-    if (servicesCount !== services.length) {
-      throw new Error(
-        `Expected ${services.length} services after seeding, found ${servicesCount}`
-      );
-    }
+    console.log(`[services seed] Newly inserted: ${result.upsertedCount}`);
+    console.log(`[services seed] Services currently available: ${servicesCount}`);
+    console.log("[services seed] Existing service records were preserved");
   } catch (error) {
     console.error(`[services seed] Failed: ${error.message}`);
     process.exitCode = 1;

@@ -3,10 +3,12 @@ import {
   getServices,
   getServiceBySlug,
 } from "../controllers/serviceController.js";
+import { getServiceForm } from "../controllers/serviceFormController.js";
 
 const router = express.Router();
 
 router.get("/", getServices);
+router.get("/:slug/form", getServiceForm);
 router.get("/:slug", getServiceBySlug);
 
 export default router;

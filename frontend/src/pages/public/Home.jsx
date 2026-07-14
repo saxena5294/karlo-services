@@ -1,19 +1,11 @@
-import Navbar from "../../components/layout/Navbar";
 import HeroSection from "../../components/home/HeroSection";
 import PopularServices from "../../components/home/PopularServices";
-import Footer from "../../components/layout/Footer";
 
 const Home = () => {
   return (
     <>
-      <Navbar />
-
-      <main>
         <HeroSection />
         <PopularServices />
-      </main>
-
-      <Footer />
     </>
   );
 };
