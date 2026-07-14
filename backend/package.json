@@ -4,8 +4,10 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-"dev": "nodemon src/server.js",
-    "start": "node src/server.js"  },
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "seed:services": "node src/seed/servicesSeed.js"
+  },
   "keywords": [
     "mern",
     "karlo-services",
