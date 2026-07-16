@@ -1,0 +1,22 @@
+import express from "express";
+import * as controller from "../controllers/partnerController.js";
+import { ROLES } from "../constants/roleConstants.js";
+import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
+
+const router = express.Router();
+router.use(developmentAuth, requireRole(ROLES.PARTNER));
+router.get("/dashboard-summary", controller.dashboardSummary);
+router.get("/leads", controller.listLeads);
+router.get("/leads/:id", controller.leadDetails);
+router.post("/leads/:id/accept", controller.acceptLead);
+router.get("/accepted-leads", controller.acceptedLeads);
+router.get("/applications", controller.listApplications);
+router.get("/applications/:id", controller.applicationDetails);
+router.patch("/applications/:id/status", controller.updateMarketplaceStatus);
+router.post("/applications/:id/remarks", controller.addRemark);
+router.post("/applications/:id/request-documents", controller.requestDocuments);
+router.post("/applications/:id/completion-documents", uploadApplicationFiles, controller.completionDocuments);
+router.get("/profile", controller.profile);
+router.patch("/profile", controller.updateProfile);
+export default router;

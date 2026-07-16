@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { FULFILLMENT_TYPES, FULFILLMENT_TYPE_VALUES } from "../constants/fulfillmentConstants.js";
 
 const serviceSchema = new mongoose.Schema(
   {
@@ -38,6 +39,9 @@ const serviceSchema = new mongoose.Schema(
       required: [true, "Service category is required"],
       trim: true,
     },
+    requiredDocuments: { type: [String], default: [] },
+    eligibility: { type: [String], default: [] },
+    instructions: { type: [String], default: [] },
     isPopular: {
       type: Boolean,
       default: false,
@@ -45,6 +49,12 @@ const serviceSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    fulfillmentType: {
+      type: String,
+      enum: FULFILLMENT_TYPE_VALUES,
+      default: FULFILLMENT_TYPES.INTERNAL,
+      index: true,
     },
   },
   {

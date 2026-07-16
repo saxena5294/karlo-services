@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "test": "node --test",
     "seed:services": "node src/seed/servicesSeed.js",
-    "seed:forms": "node src/seed/serviceFormsSeed.js"
+    "seed:forms": "node src/seed/serviceFormsSeed.js",
+    "migrate:expert-roles": "node src/scripts/normalizeExpertRoles.js",
+    "seed:partner-marketplace": "node src/seed/partnerMarketplaceSeed.js"
   },
   "keywords": [
     "mern",

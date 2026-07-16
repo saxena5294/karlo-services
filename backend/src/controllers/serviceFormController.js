@@ -18,6 +18,9 @@ export const getServiceForm = async (req, res) => {
       });
     }
 
+    form.sections = [...(form.sections || [])].sort((left, right) => left.order - right.order);
+    form.fields = [...form.fields].sort((left, right) => left.order - right.order);
+
     return res.status(200).json({ success: true, service, form });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Unable to get form configuration" });

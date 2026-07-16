@@ -46,7 +46,7 @@ const commonFields = [
     type: "file",
     required: true,
     accept: ".pdf,.jpg,.jpeg,.png,.webp",
-    helpText: "PDF, JPG, PNG or WEBP; maximum 10 MB.",
+    helpText: "PDF, JPG, PNG or WEBP; maximum 5 MB.",
   },
   {
     name: "termsAccepted",

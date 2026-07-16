@@ -1,0 +1,18 @@
+import { Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { getAdminServices, updateServiceStatus } from "../../api/adminApi";
+import ConfirmDialog from "../../components/dashboard/ConfirmDialog";
+import EmptyState from "../../components/dashboard/EmptyState";
+import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
+
+const AdminServices = () => {
+  const [services, setServices] = useState(null); const [error, setError] = useState(""); const [pending, setPending] = useState(null); const [refresh, setRefresh] = useState(0); const [busy, setBusy] = useState(false);
+  useEffect(() => { let active = true; getAdminServices({ limit: 100 }).then((response) => active && setServices(response.services)).catch((requestError) => active && setError(requestError.response?.data?.message || "Unable to load services.")); return () => { active = false; }; }, [refresh]);
+  const confirm = async () => { setBusy(true); try { await updateServiceStatus(pending._id, { isActive: !pending.isActive }); setPending(null); setRefresh((value) => value + 1); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to update service."); setPending(null); } finally { setBusy(false); } };
+  return <div className="space-y-6"><div className="flex justify-between gap-4"><div><h2 className="text-2xl font-bold">Services</h2><p className="mt-1 text-slate-500">Manage public services and their dynamic application forms.</p></div><Link to="/admin/services/new" className="inline-flex h-fit items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white"><Plus size={17} /> New service</Link></div>{error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+    {!services ? <LoadingSkeleton count={5} /> : !services.length ? <EmptyState title="No services" description="Create the first managed service." /> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{services.map((item) => <article key={item._id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex justify-between gap-3"><div><h3 className="font-bold">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{item.category} · ₹{item.price}</p></div><span className={`h-fit rounded-full px-2.5 py-1 text-xs font-semibold ${item.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{item.isActive ? "Active" : "Inactive"}</span></div><p className="mt-3 line-clamp-2 text-sm text-slate-600">{item.description}</p><p className="mt-3 text-xs text-slate-500">Processing: {item.processingTime} · {item.isPopular ? "Popular" : "Standard"}</p><div className="mt-5 flex gap-2"><Link to={`/admin/services/${item._id}/edit`} className="rounded-lg border border-blue-700 px-3 py-2 text-sm font-semibold text-blue-700">Edit</Link><button type="button" onClick={() => setPending(item)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">{item.isActive ? "Deactivate" : "Activate"}</button></div></article>)}</div>}
+    <ConfirmDialog open={Boolean(pending)} title={pending?.isActive ? "Deactivate service?" : "Activate service?"} description={pending?.isActive ? "The service will disappear from public listings. Existing applications and uploaded files will remain unchanged." : "The service will become available publicly when its form is active."} confirmLabel={pending?.isActive ? "Deactivate" : "Activate"} busy={busy} onCancel={() => setPending(null)} onConfirm={confirm} />
+  </div>;
+};
+export default AdminServices;

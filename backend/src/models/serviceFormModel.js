@@ -39,11 +39,29 @@ const fieldSchema = new mongoose.Schema(
     options: { type: [optionSchema], default: [] },
     accept: { type: String, trim: true, default: "" },
     multiple: { type: Boolean, default: false },
+    maxFileSizeMb: { type: Number, min: 0.1, max: 25, default: 5 },
     min: { type: Number },
     max: { type: Number },
     step: { type: Number },
+    section: { type: String, trim: true, default: "default" },
+    order: { type: Number, default: 0 },
   },
   { _id: true }
+);
+
+const sectionSchema = new mongoose.Schema(
+  {
+    id: {
+      type: String,
+      required: true,
+      trim: true,
+      match: [/^[a-zA-Z][a-zA-Z0-9_-]*$/, "Use a valid section ID"],
+    },
+    title: { type: String, required: true, trim: true },
+    description: { type: String, trim: true, default: "" },
+    order: { type: Number, default: 0 },
+  },
+  { _id: false }
 );
 
 const serviceFormSchema = new mongoose.Schema(
@@ -57,6 +75,7 @@ const serviceFormSchema = new mongoose.Schema(
     },
     title: { type: String, required: true, trim: true },
     description: { type: String, trim: true, default: "" },
+    sections: { type: [sectionSchema], default: [] },
     fields: {
       type: [fieldSchema],
       validate: {
