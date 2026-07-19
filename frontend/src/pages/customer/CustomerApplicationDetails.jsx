@@ -37,6 +37,7 @@ const CustomerApplicationDetails = () => {
   const labels = Object.fromEntries(
     (application.serviceForm?.fields || []).map(({ name, label }) => [name, label])
   );
+  const allDocuments = [...(application.files || []), ...(application.additionalDocuments || [])];
 
   return (
     <div className="space-y-6">
@@ -65,9 +66,9 @@ const CustomerApplicationDetails = () => {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold">Uploaded documents</h2>
-        {!application.files.length ? <p className="mt-4 text-sm text-slate-500">No documents were uploaded with this application.</p> : (
+        {!allDocuments.length ? <p className="mt-4 text-sm text-slate-500">No documents were uploaded with this application.</p> : (
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {application.files.map((file, index) => (
+            {allDocuments.map((file, index) => (
               <div key={`${file.fieldName}-${index}`} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><FileText size={20} /></span><div className="min-w-0"><p className="truncate font-semibold">{file.originalName}</p><p className="mt-1 text-xs text-slate-500">{labels[file.fieldName] || formatFieldName(file.fieldName)} · {file.format?.toUpperCase() || "File"} · {formatFileSize(file.size)}</p></div></div>
             ))}
           </div>

@@ -6,8 +6,9 @@ import { ApplicationNote } from "../models/applicationNoteModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
 import { ExpertProfile } from "../models/expertProfileModel.js";
 import { Lead } from "../models/leadModel.js";
+import { Homepage } from "../models/homepageModel.js";
 import { PartnerProfile } from "../models/partnerProfileModel.js";
-import { Service } from "../models/serviceModel.js";
+import { normalizeServiceForClient, Service } from "../models/serviceModel.js";
 import { ServiceForm } from "../models/serviceFormModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import {
@@ -264,37 +265,66 @@ export const updateExpertProfile = async (id, payload) => {
   return expert;
 };
 
-const SERVICE_FIELDS = ["title", "slug", "description", "icon", "price", "processingTime", "category", "fulfillmentType", "isPopular", "isActive", "requiredDocuments", "eligibility", "instructions"];
+const SERVICE_FIELDS = ["title", "slug", "description", "icon", "image", "price", "pricing", "processingTime", "estimatedProcessingTime", "processingTimeOverride", "variantSelectionLabel", "category", "subcategory", "dashboardCategory", "availabilityStatus", "availabilityMessage", "fulfillmentType", "isPopular", "isFeatured", "isActive", "displayOrder", "keywords", "requiredDocuments", "eligibility", "instructions", "variants"];
+
+const compatibilityPayload = (payload) => {
+  const next = { ...payload };
+  if (!next.pricing && next.price !== undefined) next.pricing = { governmentFee: 0, serviceCharge: Number(next.price), pricingMode: "fixed", pricingNote: "Legacy price preserved as service charge; government fee requires Admin review.", requiresAdminReview: true };
+  if (!next.estimatedProcessingTime && next.processingTime) next.estimatedProcessingTime = { value: null, unit: "days", displayText: next.processingTime };
+  return next;
+};
+
+const saveService = async (service) => {
+  try { await service.save(); return normalizeServiceForClient(service); }
+  catch (error) {
+    if (error.name === "ValidationError") throw new ApiError(400, Object.values(error.errors).map(({ message }) => message).join(" "));
+    if (error.code === 11000) throw new ApiError(409, "A service with this slug already exists");
+    throw error;
+  }
+};
 
 export const getAdminServices = async (query = {}) => {
   const { page, limit, skip } = paginate(query);
-  const filter = {};
-  if (query.search?.trim()) filter.title = { $regex: escapeRegex(query.search.trim()), $options: "i" };
+  const filter = query.includeMigrated === "true" ? {} : { migrationStatus: { $ne: "migrated" } };
+  const homepage = await Homepage.findOne({ key: "homepage" }).select("featuredServiceIds").lean();
+  const featuredIds = homepage?.featuredServiceIds || [];
+  if (query.search?.trim()) { const pattern = escapeRegex(query.search.trim()); filter.$or = ["title", "slug", "category", "variants.title", "variants.keywords"].map((field) => ({ [field]: { $regex: pattern, $options: "i" } })); }
   if (query.isActive !== undefined) filter.isActive = String(query.isActive) === "true";
+  if (query.category?.trim()) filter.category = query.category.trim();
+  if (query.availability?.trim()) filter.availabilityStatus = query.availability.trim();
+  if (query.popular !== undefined) filter.isPopular = String(query.popular) === "true";
+  if (query.featured !== undefined) filter._id = String(query.featured) === "true" ? { $in: featuredIds } : { $nin: featuredIds };
   const [services, total] = await Promise.all([
     Service.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Service.countDocuments(filter),
   ]);
-  return { services, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  const featured = new Set(featuredIds.map(String));
+  return { services: services.map((service) => ({ ...normalizeServiceForClient(service, { includeInactiveVariants: true }), isFeatured: service.isFeatured || featured.has(String(service._id)) })), pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
 };
 
 export const getAdminServiceById = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Service not found");
   const service = await Service.findById(id).lean();
   if (!service) throw new ApiError(404, "Service not found");
-  return service;
+  return normalizeServiceForClient(service, { includeInactiveVariants: true });
 };
 
 export const createAdminService = async (payload) => {
   assertOnlyFields(payload, SERVICE_FIELDS);
-  return Service.create(payload);
+  return saveService(new Service(compatibilityPayload(payload)));
 };
 
 export const updateAdminService = async (id, payload) => {
   assertOnlyFields(payload, SERVICE_FIELDS.filter((field) => field !== "isActive"));
-  const service = await Service.findByIdAndUpdate(id, payload, { returnDocument: "after", runValidators: true }).lean();
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Service not found");
+  const [service, rawService] = await Promise.all([Service.findById(id), Service.collection.findOne({ _id: new mongoose.Types.ObjectId(id) })]);
   if (!service) throw new ApiError(404, "Service not found");
-  return service;
+  // Mongoose applies nested defaults while hydrating old documents. Recover the
+  // raw legacy values before saving so an unrelated edit cannot erase price/time.
+  if (!rawService.pricing) service.pricing = compatibilityPayload({ price: rawService.price || 0 }).pricing;
+  if (!rawService.estimatedProcessingTime) service.estimatedProcessingTime = { value: null, unit: "days", displayText: rawService.processingTime || "Contact support" };
+  service.set(compatibilityPayload(payload));
+  return saveService(service);
 };
 
 export const updateAdminServiceStatus = async (id, payload) => {
@@ -311,7 +341,7 @@ export const getAdminServiceForm = async (serviceId) => {
 };
 
 const FORM_FIELDS = ["title", "description", "sections", "fields", "isActive"];
-const DYNAMIC_FIELD_KEYS = ["name", "label", "type", "required", "placeholder", "helpText", "options", "accept", "multiple", "maxFileSizeMb", "min", "max", "step", "section", "order"];
+const DYNAMIC_FIELD_KEYS = ["name", "label", "labelHindi", "type", "required", "placeholder", "helpText", "options", "accept", "multiple", "maxFileSizeMb", "maxFiles", "allowCamera", "capture", "documentOptions", "examples", "conditional", "collapsed", "minLength", "maxLength", "min", "max", "step", "section", "order"];
 
 export const updateAdminServiceForm = async (serviceId, payload) => {
   await getAdminServiceById(serviceId);

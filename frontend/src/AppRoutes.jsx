@@ -10,6 +10,11 @@ import ExpertApplications from "./pages/expert/ExpertApplications";
 import ExpertDashboard from "./pages/expert/ExpertDashboard";
 import ExpertProfile from "./pages/expert/ExpertProfile";
 import NotificationsPage from "./pages/shared/NotificationsPage";
+import ComingSoonPage from "./pages/shared/ComingSoonPage";
+import DashboardServices from "./pages/shared/DashboardServices";
+import FormHistory from "./pages/shared/FormHistory";
+import { DeclarationFormsPage, PartnerRenewalPage, PaymentHistoryPage, ReferEarnPage, RewardsPage, SoftwarePage } from "./pages/shared/DashboardModules";
+import DashboardHelpPage from "./pages/shared/DashboardHelpPage";
 import AdminApplicationDetails from "./pages/admin/AdminApplicationDetails";
 import AdminApplications from "./pages/admin/AdminApplications";
 import AdminCustomers from "./pages/admin/AdminCustomers";
@@ -24,7 +29,7 @@ import AdminPartners from "./pages/admin/AdminPartners";
 import AdminPartnerDetails from "./pages/admin/AdminPartnerDetails";
 import AdminLeads from "./pages/admin/AdminLeads";
 import AdminLeadDetails from "./pages/admin/AdminLeadDetails";
-import AdminContent from "./pages/admin/AdminContent";
+import ContentManagementPage from "./pages/admin/content/ContentManagementPage";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 import About from "./pages/public/About";
 import ApplyService from "./pages/public/ApplyService";
@@ -35,8 +40,9 @@ import NotFound from "./pages/public/NotFound";
 import ServiceDetails from "./pages/public/ServiceDetails";
 import Services from "./pages/public/Services";
 import TrackApplication from "./pages/public/TrackApplication";
+import FaqPage from "./pages/public/FaqPage";
+import RefundPolicy from "./pages/public/RefundPolicy";
 import PartnerDashboard from "./pages/partner/PartnerDashboard";
-import PartnerLeads from "./pages/partner/PartnerLeads";
 import PartnerLeadDetails from "./pages/partner/PartnerLeadDetails";
 import PartnerApplicationDetails from "./pages/partner/PartnerApplicationDetails";
 import PartnerWallet from "./pages/partner/PartnerWallet";
@@ -52,6 +58,8 @@ const AppRoutes = () => (
       <Route path="/track" element={<TrackApplication />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
+      <Route path="/faq" element={<FaqPage />} />
+      <Route path="/refund-policy" element={<RefundPolicy />} />
       <Route path="/login" element={<AuthPlaceholder mode="login" />} />
       <Route path="/register" element={<AuthPlaceholder mode="register" />} />
       <Route path="*" element={<NotFound />} />
@@ -63,6 +71,14 @@ const AppRoutes = () => (
       <Route path="dashboard" element={<CustomerDashboard />} />
       <Route path="applications" element={<MyApplications />} />
       <Route path="applications/:id" element={<CustomerApplicationDetails />} />
+      <Route path="services" element={<DashboardServices />} />
+      <Route path="form-history" element={<FormHistory portal="customer" />} />
+      <Route path="software" element={<SoftwarePage />} />
+      <Route path="declaration-forms" element={<DeclarationFormsPage />} />
+      <Route path="payment-history" element={<PaymentHistoryPage />} />
+      <Route path="refer-and-earn" element={<ReferEarnPage />} />
+      <Route path="rewards" element={<RewardsPage />} />
+      <Route path="help" element={<DashboardHelpPage portal="customer" />} />
       <Route path="profile" element={<CustomerProfile />} />
       <Route path="notifications" element={<NotificationsPage />} />
     </Route>
@@ -90,11 +106,20 @@ const AppRoutes = () => (
     <Route path="/partner" element={<DashboardLayout />}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<PartnerDashboard />} />
-      <Route path="leads" element={<PartnerLeads mode="available" />} />
+      <Route path="leads" element={<ComingSoonPage title="Available Leads" description="This partner feature will be available soon." />} />
       <Route path="leads/:id" element={<PartnerLeadDetails />} />
-      <Route path="accepted-leads" element={<PartnerLeads mode="accepted" />} />
-      <Route path="completed-leads" element={<PartnerLeads mode="completed" />} />
+      <Route path="accepted-leads" element={<ComingSoonPage title="Accepted Leads" description="This partner feature will be available soon." />} />
+      <Route path="completed-leads" element={<ComingSoonPage title="Accepted Work" description="This partner feature will be available soon." />} />
       <Route path="applications/:id" element={<PartnerApplicationDetails />} />
+      <Route path="services" element={<DashboardServices />} />
+      <Route path="form-history" element={<FormHistory portal="partner" />} />
+      <Route path="software" element={<SoftwarePage />} />
+      <Route path="declaration-forms" element={<DeclarationFormsPage />} />
+      <Route path="payment-history" element={<PaymentHistoryPage />} />
+      <Route path="renewal" element={<PartnerRenewalPage />} />
+      <Route path="refer-and-earn" element={<ReferEarnPage />} />
+      <Route path="rewards" element={<RewardsPage />} />
+      <Route path="help" element={<DashboardHelpPage portal="partner" />} />
       <Route path="wallet" element={<PartnerWallet />} />
       <Route path="notifications" element={<NotificationsPage />} />
       <Route path="profile" element={<PartnerProfile />} />
@@ -120,7 +145,7 @@ const AppRoutes = () => (
       <Route path="services/:id/form-builder" element={<AdminServiceForm />} />
       <Route path="reports" element={<AdminReports />} />
       <Route path="notifications" element={<NotificationsPage />} />
-      <Route path="content" element={<AdminContent />} />
+      <Route path="content" element={<ContentManagementPage />} />
       <Route path="audit-logs" element={<AdminAuditLogs />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>

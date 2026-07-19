@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
-const HeroSection = () => {
+const HeroSection = ({ hero = {} }) => {
+  const heading = hero.heading || "Government and digital services, made simple."; const split = heading.lastIndexOf(",");
   return (
     <section className="overflow-hidden bg-gradient-to-br from-blue-50 via-white to-orange-50">
       <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-2 lg:gap-14 lg:px-8 lg:py-24">
@@ -10,28 +11,27 @@ const HeroSection = () => {
           </span>
 
           <h1 className="mt-5 text-3xl font-bold leading-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Government and digital services,
-            <span className="text-blue-700"> made simple.</span>
+            {split > 0 ? heading.slice(0, split + 1) : heading}
+            {split > 0 && <span className="text-blue-700">{heading.slice(split + 1)}</span>}
           </h1>
 
           <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-slate-600 sm:text-lg sm:leading-8 lg:mx-0">
-            Apply for PAN card, passport, certificates, GST, ITR and other
-            services from one secure platform.
+            {hero.subheading || "Apply for PAN card, passport, certificates, GST, ITR and other services from one secure platform."}
           </p>
 
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Link
-              to="/services"
+              to={hero.primaryButton?.link || "/services"}
               className="rounded-xl bg-blue-700 px-6 py-3 text-center font-semibold text-white transition hover:bg-blue-800"
             >
-              Explore Services
+              {hero.primaryButton?.text || "Explore Services"}
             </Link>
 
             <Link
-              to="/track"
+              to={hero.secondaryButton?.link || "/track"}
               className="rounded-xl border border-blue-700 px-6 py-3 text-center font-semibold text-blue-700 transition hover:bg-blue-50"
             >
-              Track Application
+              {hero.secondaryButton?.text || "Track Application"}
             </Link>
           </div>
 
@@ -54,6 +54,7 @@ const HeroSection = () => {
         </div>
 
         <div className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:rounded-3xl sm:p-6 lg:max-w-none lg:shadow-2xl">
+          {hero.image?.url ? <img src={hero.image.url} alt="Karlo services" className="h-80 w-full rounded-2xl object-cover" /> : <>
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 sm:pb-5">
             <div>
               <p className="text-xs text-slate-500 sm:text-sm">Welcome back</p>
@@ -84,6 +85,7 @@ const HeroSection = () => {
               </p>
             </div>
           </div>
+          </>}
         </div>
       </div>
     </section>

@@ -19,8 +19,8 @@ const Services = () => {
   const visibleServices = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return services;
-    return services.filter(({ title, description, category }) =>
-      [title, description, category].some((value) => value?.toLowerCase().includes(query))
+    return services.filter(({ title, description, category, keywords, variants }) =>
+      [title, description, category, ...(keywords || []), ...(variants || []).flatMap((variant) => [variant.title, variant.slug, ...(variant.keywords || [])])].some((value) => value?.toLowerCase().includes(query))
     );
   }, [search, services]);
 

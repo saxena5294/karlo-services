@@ -1,0 +1,1 @@
+import { bannerApi } from "../../../api/adminCmsApi"; import CollectionManager from "./CollectionManager"; const BannerManager=()=> <CollectionManager type="banner" api={bannerApi}/>; export default BannerManager;

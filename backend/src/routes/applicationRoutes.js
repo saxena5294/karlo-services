@@ -12,7 +12,6 @@ import {
 import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
 import {
   developmentAuth,
-  optionalDevelopmentAuth,
   requireRole,
 } from "../middlewares/developmentAuthMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
@@ -63,6 +62,6 @@ router.get(
 );
 
 // TODO(Clerk): attach customer identity from req.auth when signed-in submission is required.
-router.post("/:slug", optionalDevelopmentAuth, uploadApplicationFiles, submitApplication);
+router.post("/:slug", developmentAuth, requireRole(ROLES.CUSTOMER), uploadApplicationFiles, submitApplication);
 
 export default router;

@@ -8,6 +8,12 @@ const optionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const conditionalRuleSchema = new mongoose.Schema({
+  field: { type: String, required: true, trim: true },
+  operator: { type: String, enum: ["equals", "not_equals", "in"], default: "equals" },
+  value: { type: mongoose.Schema.Types.Mixed, required: true },
+}, { _id: false });
+
 const fieldSchema = new mongoose.Schema(
   {
     name: {
@@ -17,6 +23,7 @@ const fieldSchema = new mongoose.Schema(
       match: [/^[a-zA-Z][a-zA-Z0-9_]*$/, "Use a valid field name"],
     },
     label: { type: String, required: true, trim: true },
+    labelHindi: { type: String, trim: true, default: "" },
     type: {
       type: String,
       required: true,
@@ -40,6 +47,15 @@ const fieldSchema = new mongoose.Schema(
     accept: { type: String, trim: true, default: "" },
     multiple: { type: Boolean, default: false },
     maxFileSizeMb: { type: Number, min: 0.1, max: 25, default: 5 },
+    maxFiles: { type: Number, min: 1, max: 10, default: 1 },
+    allowCamera: { type: Boolean, default: false },
+    capture: { type: String, enum: ["", "user", "environment"], default: "" },
+    documentOptions: { type: [optionSchema], default: [] },
+    examples: { type: [String], default: [] },
+    conditional: { type: conditionalRuleSchema, default: null },
+    collapsed: { type: Boolean, default: false },
+    minLength: { type: Number, min: 0 },
+    maxLength: { type: Number, min: 1, max: 5000 },
     min: { type: Number },
     max: { type: Number },
     step: { type: Number },
@@ -86,6 +102,11 @@ const serviceFormSchema = new mongoose.Schema(
       },
     },
     isActive: { type: Boolean, default: true },
+    requireEmail: { type: Boolean, default: false },
+    allowAdditionalDocuments: { type: Boolean, default: true },
+    maxAdditionalDocuments: { type: Number, min: 0, max: 6, default: 6 },
+    termsUrl: { type: String, trim: true, default: "/terms" },
+    captchaRequired: { type: Boolean, default: true },
   },
   { timestamps: true, collection: "serviceforms" }
 );

@@ -24,6 +24,11 @@ import {
   createApplicationNotification,
   sanitizeNotificationText,
 } from "./notificationService.js";
+import { conditionalMatches, getEffectiveFields } from "./formConfigurationService.js";
+import { validateMobileVerificationToken } from "./mobileVerificationService.js";
+import { assertServiceCanAcceptApplications } from "./serviceAvailabilityService.js";
+import { verifyCaptcha } from "./captchaService.js";
+import { assertVariantAvailable, findServiceBySlugOrLegacy, variantForm } from "./serviceVariantService.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -119,24 +124,26 @@ export const hasAllowedFileSignature = (file) => {
   return false;
 };
 
-const validateSubmission = (form, body, files) => {
+export const validateSubmission = (form, body, files) => {
   const errors = [];
-  const allowedFields = new Set(form.fields.map(({ name }) => name));
+  const fields = getEffectiveFields(form);
+  const allowedFields = new Set([...fields.map(({ name }) => name), "mobileVerificationToken", "captchaToken", "additionalDetails", "termsAccepted", "additionalDocumentLabels"]);
   const filesByField = files.reduce((groups, file) => {
     groups[file.fieldname] = [...(groups[file.fieldname] || []), file];
     return groups;
   }, {});
 
   for (const key of Object.keys(body)) {
-    if (!allowedFields.has(key)) errors.push(`Unexpected field: ${key}`);
+    if (!allowedFields.has(key) && !key.endsWith("__documentType")) errors.push(`Unexpected field: ${key}`);
   }
 
   for (const file of files) {
-    const config = form.fields.find(({ name }) => name === file.fieldname);
-    if (!config || config.type !== "file") errors.push(`Unexpected file field: ${file.fieldname}`);
+    const config = fields.find(({ name }) => name === file.fieldname);
+    if ((!config || config.type !== "file") && !/^additionalDocument__\d+$/.test(file.fieldname)) errors.push(`Unexpected file field: ${file.fieldname}`);
   }
 
-  for (const field of form.fields) {
+  for (const field of fields) {
+    if (!conditionalMatches(field.conditional, body)) continue;
     const value = body[field.name];
     const missingValue = isMissing(value);
     const fieldFiles = filesByField[field.name] || [];
@@ -151,7 +158,7 @@ const validateSubmission = (form, body, files) => {
       errors.push(`${field.label} is required`);
     }
 
-    if (field.options.length && !missingValue) {
+    if ((field.options || []).length && !missingValue) {
       const allowed = new Set(field.options.map(({ value: optionValue }) => optionValue));
       const values = Array.isArray(value) ? value : [value];
       if (values.some((item) => !allowed.has(item))) {
@@ -190,21 +197,34 @@ const validateSubmission = (form, body, files) => {
     }
 
     if (field.type === "file") {
-      const maxBytes = Number(field.maxFileSizeMb || 5) * 1024 * 1024;
+      const maxBytes = Math.min(Number(field.maxFileSizeMb || 10), 10) * 1024 * 1024;
       if (fieldFiles.some((file) => file.size > maxBytes)) {
         errors.push(`${field.label} must be no larger than ${field.maxFileSizeMb || 5} MB`);
       }
-      if (!field.multiple && fieldFiles.length > 1) {
-        errors.push(`${field.label} accepts only one file`);
+      const maxFiles = Math.max(Number(field.maxFiles || (field.multiple ? 10 : 1)), 1);
+      if (fieldFiles.length > maxFiles) {
+        errors.push(`${field.label} accepts a maximum of ${maxFiles} files`);
       }
       if (fieldFiles.some((file) => !matchesAcceptRule(file, field.accept))) {
         errors.push(`${field.label} contains an unsupported file type`);
       }
       if (fieldFiles.some((file) => !hasAllowedFileSignature(file))) {
-        errors.push(`${field.label} does not contain a valid JPEG, PNG, WEBP, or PDF file`);
+        errors.push(`${field.label} does not contain a valid JPEG, PNG, or PDF file`);
       }
+      if (fieldFiles.some((file) => !["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype))) errors.push(`${field.label} supports only JPG, PNG, or PDF files`);
+      if (field.documentOptions?.length && fieldFiles.length && !field.documentOptions.some(({ value }) => value === body[`${field.name}__documentType`])) errors.push(`Select a valid document type for ${field.label}`);
     }
+    if (field.minLength && !missingValue && String(value).trim().length < field.minLength) errors.push(`${field.label} must contain at least ${field.minLength} characters`);
+    if (field.maxLength && !missingValue && String(value).trim().length > field.maxLength) errors.push(`${field.label} cannot exceed ${field.maxLength} characters`);
   }
+
+  const additionalFiles = files.filter(({ fieldname }) => /^additionalDocument__\d+$/.test(fieldname));
+  if (additionalFiles.length > Math.min(form.maxAdditionalDocuments ?? 6, 6)) errors.push("You can add a maximum of 6 additional documents");
+  if (additionalFiles.some((file) => file.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype) || !hasAllowedFileSignature(file))) errors.push("Please upload a JPG, PNG or PDF file smaller than 10 MB");
+  if (!/^[\p{L}][\p{L}\p{M} .'-]{1,119}$/u.test(String(body.applicantName || "").trim())) errors.push("Applicant Name must contain at least 2 valid English or Hindi characters");
+  if (!/^[6-9]\d{9}$/.test(String(body.mobileNumber || "").trim())) errors.push("Mobile Number must be a valid 10-digit Indian mobile number");
+  if (String(body.additionalDetails || "").length > 2000) errors.push("Additional Details cannot exceed 2000 characters");
+  if (body.termsAccepted !== "true") errors.push("You must accept the declaration before submission");
 
   return errors;
 };
@@ -236,6 +256,28 @@ const getPagination = ({ page, limit }) => {
 };
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const addHistoryFilters = async (filter, query = {}) => {
+  if (query.service?.trim()) {
+    const pattern = escapeRegex(query.service.trim());
+    const services = await Service.find({ title: { $regex: pattern, $options: "i" } }).select("_id").lean();
+    filter.service = { $in: services.map(({ _id }) => _id) };
+  }
+  if (query.from || query.to) {
+    filter.createdAt = {};
+    if (query.from) {
+      const from = new Date(`${query.from}T00:00:00.000Z`);
+      if (Number.isNaN(from.getTime())) throw new ApiError(400, "Invalid from date");
+      filter.createdAt.$gte = from;
+    }
+    if (query.to) {
+      const to = new Date(`${query.to}T23:59:59.999Z`);
+      if (Number.isNaN(to.getTime())) throw new ApiError(400, "Invalid to date");
+      filter.createdAt.$lte = to;
+    }
+  }
+  return filter;
+};
 
 const customerOwnerFilter = (customerUserId) => ({
   $or: [{ customerUserId }, { customerId: customerUserId }],
@@ -272,7 +314,7 @@ const buildCustomerFilter = async (customerId, query = {}) => {
     ] });
   }
 
-  return filter;
+  return addHistoryFilters(filter, query);
 };
 
 const listApplications = async (filter, query = {}) => {
@@ -505,16 +547,32 @@ const requestDocumentsForApplication = async ({ application, remarks, updatedBy,
 
 export const submitApplication = async ({
   serviceSlug,
+  variantKey,
   body,
   files = [],
   customerId = null,
   updatedBy = "system",
+  submittedByRole = ROLES.CUSTOMER,
+  idempotencyKey,
+  remoteIp,
 }) => {
-  const service = await Service.findOne({ slug: serviceSlug, isActive: true });
-  if (!service) throw new ApiError(404, "Service not found");
+  if (!customerId || submittedByRole !== ROLES.CUSTOMER) throw new ApiError(403, "Only authenticated customers can submit applications");
+  const cleanSubmissionKey = String(idempotencyKey || "").trim();
+  if (!/^[a-zA-Z0-9_-]{16,120}$/.test(cleanSubmissionKey)) throw new ApiError(400, "A valid idempotency key is required");
+  const existingApplication = await Application.findOne({ customerUserId: customerId, submissionKey: cleanSubmissionKey });
+  if (existingApplication) return existingApplication;
+  const service = await findServiceBySlugOrLegacy(serviceSlug);
+  assertServiceCanAcceptApplications(service);
+  let variant;
+  try { variant = assertVariantAvailable(service, variantKey, serviceSlug); }
+  catch (error) { throw new ApiError(error.statusCode || 400, error.message); }
 
-  const form = await ServiceForm.findOne({ service: service._id, isActive: true });
+  const storedForm = await ServiceForm.findOne({ service: service._id, isActive: true });
+  const form = variantForm(storedForm, variant);
   if (!form) throw new ApiError(404, "Application form is not configured");
+
+  const mobileNumber = validateMobileVerificationToken(body.mobileVerificationToken, customerId, body.mobileNumber);
+  if (form.captchaRequired !== false) await verifyCaptcha(body.captchaToken, remoteIp);
 
   const validationErrors = validateSubmission(form, body, files);
   if (validationErrors.length) {
@@ -523,23 +581,38 @@ export const submitApplication = async ({
 
   const applicationNumber = createApplicationNumber();
   const uploadedFiles = [];
+  let additionalLabels = {};
+  try { additionalLabels = JSON.parse(body.additionalDocumentLabels || "{}"); } catch { throw new ApiError(400, "Additional document labels are invalid"); }
+  const effectiveFields = getEffectiveFields(form);
+  const safeFileName = (name) => String(name || "document").replace(/[\\/<>:"|?*\u0000-\u001F]/g, "_").replace(/\s+/g, " ").trim().slice(0, 180) || "document";
 
   try {
     for (const file of files) {
       const result = await uploadBuffer(file, applicationNumber, "submissions");
+      const additional = /^additionalDocument__\d+$/.test(file.fieldname);
+      const field = effectiveFields.find(({ name }) => name === file.fieldname);
+      const customLabel = additional ? String(additionalLabels[file.fieldname] || "Additional Document").replace(/[<>]/g, "").trim().slice(0, 120) : "";
       uploadedFiles.push({
         fieldName: file.fieldname,
-        originalName: file.originalname,
+        fieldKey: file.fieldname,
+        label: additional ? customLabel : (field?.label || "Document"),
+        documentType: additional ? "additional" : String(body[`${file.fieldname}__documentType`] || "").trim(),
+        customLabel,
+        originalName: safeFileName(file.originalname),
         publicId: result.public_id,
         secureUrl: result.secure_url,
         resourceType: result.resource_type,
         format: result.format || "",
         size: result.bytes ?? file.size,
+        mimeType: file.mimetype,
+        required: additional ? false : Boolean(field?.required),
+        status: "uploaded",
+        uploadedAt: new Date(),
       });
     }
 
     const formData = Object.fromEntries(
-      form.fields
+      effectiveFields
         .filter(({ type }) => type !== "file")
         .map(({ name, type }) => {
           const value = normalizeBodyValue(body[name]);
@@ -558,11 +631,33 @@ export const submitApplication = async ({
           service: service._id,
           serviceForm: form._id,
           formData,
-          files: uploadedFiles,
+          files: uploadedFiles.filter(({ fieldName }) => !fieldName.startsWith("additionalDocument__")),
+          additionalDocuments: uploadedFiles.filter(({ fieldName }) => fieldName.startsWith("additionalDocument__")),
           customerUserId: customerId || null,
           customerId: customerId || null,
           fulfillmentType: service.fulfillmentType || FULFILLMENT_TYPES.INTERNAL,
           status: APPLICATION_STATUSES.SUBMITTED,
+          serviceSlug: service.slug,
+          serviceName: variant?.title || service.title,
+          parentServiceId: service._id,
+          parentServiceTitle: service.title,
+          parentServiceSlug: service.slug,
+          variantKey: variant?.key || "",
+          variantTitle: variant?.title || "",
+          variantSlug: variant?.slug || "",
+          pricingSnapshot: JSON.parse(JSON.stringify(variant?.pricing || service.pricing || {})),
+          processingTimeSnapshot: JSON.parse(JSON.stringify(variant?.processingTime || service.estimatedProcessingTime || {})),
+          formConfigurationSnapshot: { title: form.title, description: form.description, sections: form.sections || [], fields: effectiveFields },
+          requiredDocumentSnapshot: variant?.requiredDocuments || service.requiredDocuments || [],
+          submittedByRole,
+          applicantName: String(body.applicantName).trim().replace(/\s+/g, " "),
+          mobileNumber,
+          mobileVerified: true,
+          email: String(body.email || "").trim().toLowerCase(),
+          additionalDetails: String(body.additionalDetails || "").trim(),
+          submittedAt: new Date(),
+          submissionKey: cleanSubmissionKey,
+          receipt: { generatedAt: new Date(), documentCount: uploadedFiles.length },
         }],
         { session }
       );
@@ -846,6 +941,9 @@ export const getCustomerDashboardSummary = async (customerId) => {
               ],
             },
           },
+          documentsRequired: {
+            $sum: { $cond: [{ $eq: ["$status", "Documents Required"] }, 1, 0] },
+          },
           completed: {
             $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] },
           },
@@ -864,6 +962,7 @@ export const getCustomerDashboardSummary = async (customerId) => {
       total: counts.total || 0,
       submitted: counts.submitted || 0,
       processing: counts.processing || 0,
+      documentsRequired: counts.documentsRequired || 0,
       completed: counts.completed || 0,
       rejected: counts.rejected || 0,
     },
@@ -878,13 +977,22 @@ export const getCustomerApplicationById = async (customerId, id) => {
   });
 
   const safeFiles = application.files.map(
-    ({ fieldName, originalName, format, size }) => ({
+    ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({
       fieldName,
+      fieldKey,
+      label,
+      documentType,
       originalName,
+      secureUrl,
+      mimeType,
       format,
       size,
+      required,
+      status,
+      uploadedAt,
     })
   );
+  const safeAdditionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
   const safeCompletionDocuments = (application.completionDocuments || []).map(
     ({ fieldName, originalName, secureUrl, format, size }) => ({ fieldName, originalName, secureUrl, format, size })
   );
@@ -904,9 +1012,10 @@ export const getCustomerApplicationById = async (customerId, id) => {
   delete safeApplication.customerId;
   delete safeApplication.files;
   delete safeApplication.completionDocuments;
+  delete safeApplication.additionalDocuments;
   delete safeApplication.timeline;
 
-  return { ...safeApplication, files: safeFiles, completionDocuments: safeCompletionDocuments, timeline: safeTimeline };
+  return { ...safeApplication, files: safeFiles, additionalDocuments: safeAdditionalDocuments, completionDocuments: safeCompletionDocuments, timeline: safeTimeline };
 };
 
 export const getExpertApplications = async (expertId, query = {}) => {
@@ -1021,8 +1130,9 @@ export const getExpertApplicationById = async (expertId, id) => {
   const safeApplication = { ...application };
   safeApplication.customerName = getCustomerName(application.formData);
   safeApplication.files = application.files.map(
-    ({ fieldName, originalName, format, size }) => ({ fieldName, originalName, format, size })
+    ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt })
   );
+  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
   safeApplication.timeline = application.timeline.map(({ status, remarks, createdAt }) => ({
     status,
     remarks,
@@ -1121,6 +1231,17 @@ export const getPartnerApplications = async (partnerId, query = {}) => {
   const status = query.status ? normalizeStatus(query.status) : null;
   if (query.status && !status) throw new ApiError(400, "Invalid application status");
   if (status) filter.status = { $in: getStatusStorageValues(status) };
+  if (query.search?.trim()) {
+    const pattern = escapeRegex(query.search.trim());
+    const services = await Service.find({ title: { $regex: pattern, $options: "i" } }).select("_id").lean();
+    filter.$or = [
+      { applicationNumber: { $regex: pattern, $options: "i" } },
+      { service: { $in: services.map(({ _id }) => _id) } },
+      { "formData.fullName": { $regex: pattern, $options: "i" } },
+      { "formData.applicantName": { $regex: pattern, $options: "i" } },
+    ];
+  }
+  await addHistoryFilters(filter, query);
   const { page, limit, skip } = getPagination(query);
   const [documents, total] = await Promise.all([
     Application.find(filter)
@@ -1142,7 +1263,8 @@ export const getPartnerApplicationById = async (partnerId, id) => {
     $and: [partnerOwnerFilter(partnerId.trim()), getApplicationIdentifierFilter(id)],
   });
   const safeApplication = { ...application, customerName: getCustomerName(application.formData) };
-  safeApplication.files = application.files.map(({ fieldName, originalName, secureUrl, resourceType, format, size }) => ({ fieldName, originalName, secureUrl, resourceType, format, size }));
+  safeApplication.files = application.files.map(({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }));
+  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
   safeApplication.completionDocuments = (application.completionDocuments || []).map(({ fieldName, originalName, secureUrl, resourceType, format, size }) => ({ fieldName, originalName, secureUrl, resourceType, format, size }));
   safeApplication.timeline = application.timeline.map(({ status, remarks, createdAt }) => ({ status, remarks, createdAt }));
   delete safeApplication.assignedBy;

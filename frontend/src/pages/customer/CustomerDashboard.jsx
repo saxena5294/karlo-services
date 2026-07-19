@@ -1,7 +1,7 @@
 import {
   CircleCheck,
-  CircleX,
   Clock3,
+  FileWarning,
   FilePlus2,
   Files,
   Search,
@@ -14,6 +14,8 @@ import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatCard from "../../components/dashboard/StatCard";
 import StatusBadge from "../../components/dashboard/StatusBadge";
 import { formatDate } from "../../utils/dashboardFormatters";
+import AdvertisementBanner from "../../components/dashboard/AdvertisementBanner";
+import DashboardNotice from "../../components/dashboard/DashboardNotice";
 
 const CustomerDashboard = () => {
   const [data, setData] = useState(null);
@@ -45,11 +47,13 @@ const CustomerDashboard = () => {
     ["Submitted", summary.submitted, FilePlus2, "amber"],
     ["Processing", summary.processing, Clock3, "violet"],
     ["Completed", summary.completed, CircleCheck, "emerald"],
-    ["Rejected", summary.rejected, CircleX, "rose"],
+    ["Documents Required", summary.documentsRequired, FileWarning, "rose"],
   ];
 
   return (
     <div className="space-y-8">
+      <DashboardNotice audience="customer" />
+      <AdvertisementBanner />
       <section>
         <h2 className="text-2xl font-bold">Welcome back</h2>
         <p className="mt-1 text-slate-500">Here is the latest activity across your service applications.</p>

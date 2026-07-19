@@ -1,0 +1,1 @@
+import { testimonialApi } from "../../../api/adminCmsApi"; import CollectionManager from "./CollectionManager"; const TestimonialManager=()=> <CollectionManager type="testimonial" api={testimonialApi}/>; export default TestimonialManager;

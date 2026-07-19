@@ -1,0 +1,21 @@
+import express from "express";
+import * as controller from "../controllers/dashboardModuleController.js";
+import { ROLES } from "../constants/roleConstants.js";
+import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+
+const router = express.Router();
+router.use(developmentAuth, requireRole(ROLES.CUSTOMER, ROLES.PARTNER));
+router.get("/software", controller.software);
+router.get("/declaration-forms", controller.declarations);
+router.get("/payments", controller.payments);
+router.get("/rewards", controller.rewards);
+router.get("/referrals", controller.referrals);
+router.post("/referrals/claim", controller.claimReferral);
+router.get("/tickets", controller.tickets);
+router.post("/tickets", controller.createTicket);
+router.get("/tickets/:id", controller.ticket);
+router.post("/tickets/:id/replies", controller.replyTicket);
+router.patch("/tickets/:id/close", controller.closeTicket);
+router.get("/renewal", requireRole(ROLES.PARTNER), controller.renewal);
+router.post("/renewal/requests", requireRole(ROLES.PARTNER), controller.requestRenewal);
+export default router;

@@ -16,10 +16,14 @@ export const submitApplication = async (req, res, next) => {
   try {
     const application = await submitApplicationService({
       serviceSlug: req.params.slug,
+      variantKey: req.body.variantKey,
       body: req.body,
       files: req.files || [],
       customerId: req.auth?.role === ROLES.CUSTOMER ? req.auth.userId : null,
       updatedBy: getActorId(req),
+      submittedByRole: req.auth?.role,
+      idempotencyKey: req.get("idempotency-key"),
+      remoteIp: req.ip,
     });
 
     return res.status(201).json({
@@ -27,6 +31,15 @@ export const submitApplication = async (req, res, next) => {
       message: "Application submitted successfully",
       applicationNumber: application.applicationNumber,
       status: application.status,
+      receipt: {
+        applicationId: application._id,
+        serviceName: application.serviceName,
+        variantTitle: application.variantTitle,
+        applicantName: application.applicantName,
+        mobileNumber: application.mobileNumber,
+        submittedAt: application.submittedAt,
+        documentCount: application.receipt?.documentCount || 0,
+      },
     });
   } catch (error) {
     return next(error);

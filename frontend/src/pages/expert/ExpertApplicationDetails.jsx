@@ -136,6 +136,7 @@ const ExpertApplicationDetails = () => {
       label,
     ]),
   );
+  const allDocuments = [...(application.files || []), ...(application.additionalDocuments || [])];
 
   return (
     <div className="space-y-6">
@@ -301,19 +302,23 @@ const ExpertApplicationDetails = () => {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold">Uploaded documents</h2>
-        {!application.files.length ? (
+        {!allDocuments.length ? (
           <p className="mt-4 text-sm text-slate-500">No uploaded documents.</p>
         ) : (
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {application.files.map((file, index) => (
-              <div
+            {allDocuments.map((file, index) => (
+              <a
                 key={`${file.fieldName}-${index}`}
-                className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-4"
+                href={file.secureUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-4 hover:border-blue-300"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
                   <FileText size={20} />
                 </span>
                 <div className="min-w-0">
+                  <p className="font-bold text-blue-800">{file.customLabel || file.label || labels[file.fieldName] || formatFieldName(file.fieldName)}</p>
                   <p className="truncate font-semibold">{file.originalName}</p>
                   <p className="mt-1 text-xs text-slate-500">
                     {labels[file.fieldName] || formatFieldName(file.fieldName)}{" "}
@@ -321,7 +326,7 @@ const ExpertApplicationDetails = () => {
                     {formatFileSize(file.size)}
                   </p>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         )}

@@ -10,7 +10,10 @@
     "seed:services": "node src/seed/servicesSeed.js",
     "seed:forms": "node src/seed/serviceFormsSeed.js",
     "migrate:expert-roles": "node src/scripts/normalizeExpertRoles.js",
-    "seed:partner-marketplace": "node src/seed/partnerMarketplaceSeed.js"
+    "seed:partner-marketplace": "node src/seed/partnerMarketplaceSeed.js",
+    "seed:cms": "node src/seed/cmsSeed.js",
+    "seed:simple-forms": "node src/scripts/applySimpleFormTemplates.js",
+    "migrate:service-business-fields": "node src/scripts/migrateServiceBusinessFields.js"
   },
   "keywords": [
     "mern",

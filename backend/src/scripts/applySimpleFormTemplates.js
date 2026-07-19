@@ -1,0 +1,10 @@
+import dotenv from "dotenv";
+import mongoose from "mongoose";
+import { fileURLToPath } from "url";
+import { connectDatabase } from "../config/database.js";
+import { templateForService } from "../config/serviceFormTemplates.js";
+import { Service } from "../models/serviceModel.js";
+import { ServiceForm } from "../models/serviceFormModel.js";
+dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
+const run = async () => { try { await connectDatabase(); const services = await Service.find({ isActive: true }); let updated = 0; for (const service of services) { const template = templateForService(service); if (!template) continue; const { match: _match, ...configuration } = template; await ServiceForm.findOneAndUpdate({ service: service._id }, { $set: { ...configuration, title: `${service.title} Application`, description: "Enter basic details, verify your mobile number, and upload the requested documents." }, $setOnInsert: { service: service._id, isActive: true } }, { upsert: true, runValidators: true, setDefaultsOnInsert: true }); updated += 1; } console.log(`[simple forms] Updated ${updated} configured service forms.`); } catch (error) { console.error(`[simple forms] Failed: ${error.message}`); process.exitCode = 1; } finally { if (mongoose.connection.readyState) await mongoose.connection.close(); } };
+run();

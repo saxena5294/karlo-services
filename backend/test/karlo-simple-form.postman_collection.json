@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "Karlo Services - Simple Form Engine",
+    "description": "Development end-to-end checks. Enable DEV_AUTH_ENABLED, run seed:simple-forms once, and provide a valid JPG/PNG/PDF in sampleDocumentPath.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "customerId", "value": "postman-customer-001" },
+    { "key": "serviceSlug", "value": "passport-service" },
+    { "key": "mobileNumber", "value": "9876543210" },
+    { "key": "sampleDocumentPath", "value": "C:/path/to/sample.pdf" }
+  ],
+  "auth": { "type": "noauth" },
+  "item": [
+    {
+      "name": "1 - Read effective service form",
+      "request": { "method": "GET", "url": "{{baseUrl}}/services/{{serviceSlug}}/form" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('form loads with minimal fields', function () {",
+        "  pm.response.to.have.status(200);",
+        "  const fields = pm.response.json().form.fields;",
+        "  ['applicantName', 'mobileNumber', 'email'].forEach(name => pm.expect(fields.some(field => field.name === name)).to.be.true);",
+        "});"
+      ] } }]
+    },
+    {
+      "name": "2 - Send mobile OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "x-dev-user-id", "value": "{{customerId}}" }, { "key": "x-dev-role", "value": "customer" }],
+        "body": { "mode": "raw", "raw": "{\n  \"mobileNumber\": \"{{mobileNumber}}\"\n}" },
+        "url": "{{baseUrl}}/mobile-verification/send"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('OTP request succeeds', function () { pm.response.to.have.status(200); });",
+        "const json = pm.response.json();",
+        "if (json.developmentOtp) pm.collectionVariables.set('otp', json.developmentOtp);"
+      ] } }]
+    },
+    {
+      "name": "3 - Verify mobile OTP",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "x-dev-user-id", "value": "{{customerId}}" }, { "key": "x-dev-role", "value": "customer" }],
+        "body": { "mode": "raw", "raw": "{\n  \"mobileNumber\": \"{{mobileNumber}}\",\n  \"otp\": \"{{otp}}\"\n}" },
+        "url": "{{baseUrl}}/mobile-verification/verify"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('mobile is verified', function () { pm.response.to.have.status(200); });",
+        "pm.collectionVariables.set('mobileVerificationToken', pm.response.json().mobileVerificationToken);"
+      ] } }]
+    },
+    {
+      "name": "4 - Submit passport application",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "x-dev-user-id", "value": "{{customerId}}" }, { "key": "x-dev-role", "value": "customer" }, { "key": "Idempotency-Key", "value": "postman{{$guid}}" }],
+        "body": { "mode": "formdata", "formdata": [
+          { "key": "applicantName", "value": "Postman Applicant", "type": "text" },
+          { "key": "mobileNumber", "value": "{{mobileNumber}}", "type": "text" },
+          { "key": "passportType", "value": "fresh", "type": "text" },
+          { "key": "termsAccepted", "value": "true", "type": "text" },
+          { "key": "captchaToken", "value": "development-bypass", "type": "text" },
+          { "key": "mobileVerificationToken", "value": "{{mobileVerificationToken}}", "type": "text" },
+          { "key": "aadhaarCard", "type": "file", "src": "{{sampleDocumentPath}}" },
+          { "key": "panCard", "type": "file", "src": "{{sampleDocumentPath}}" },
+          { "key": "marksheet10", "type": "file", "src": "{{sampleDocumentPath}}" }
+        ] },
+        "url": "{{baseUrl}}/applications/{{serviceSlug}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('application is accepted with a receipt', function () {",
+        "  pm.response.to.have.status(201);",
+        "  const json = pm.response.json();",
+        "  pm.expect(json.application.applicationNumber).to.be.a('string');",
+        "  pm.expect(json.receipt.mobileVerified).to.eql(true);",
+        "});",
+        "pm.collectionVariables.set('applicationNumber', pm.response.json().application.applicationNumber);"
+      ] } }]
+    }
+  ]
+}

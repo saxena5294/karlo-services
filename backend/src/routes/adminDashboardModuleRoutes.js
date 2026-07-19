@@ -1,0 +1,15 @@
+import express from "express";
+import * as controller from "../controllers/adminDashboardModuleController.js";
+import { ROLES } from "../constants/roleConstants.js";
+import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+const router = express.Router();
+router.use(developmentAuth, requireRole(ROLES.ADMIN));
+router.get("/resources/:type", controller.resources);
+router.post("/resources/:type", controller.createResource);
+router.patch("/resources/:type/:id", controller.updateResource);
+router.get("/tickets", controller.tickets);
+router.patch("/tickets/:id", controller.updateTicket);
+router.post("/tickets/:id/replies", controller.replyTicket);
+router.get("/renewals", controller.renewals);
+router.patch("/renewals/:id", controller.reviewRenewal);
+export default router;

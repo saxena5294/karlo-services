@@ -6,6 +6,7 @@ const navigationLinks = [
   { name: "Services", path: "/services" },
   { name: "Track Application", path: "/track" },
   { name: "About", path: "/about" },
+  { name: "FAQs", path: "/faq" },
   { name: "Contact", path: "/contact" },
 ];
 

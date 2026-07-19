@@ -8,7 +8,15 @@ import expertRoutes from "./routes/expertRoutes.js";
 import partnerRoutes from "./routes/partnerRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
-import { errorMiddleware, notFoundMiddleware } from "./middlewares/errorMiddleware.js";
+import publicCmsRoutes from "./routes/publicCmsRoutes.js";
+import adminCmsRoutes from "./routes/adminCmsRoutes.js";
+import dashboardModuleRoutes from "./routes/dashboardModuleRoutes.js";
+import adminDashboardModuleRoutes from "./routes/adminDashboardModuleRoutes.js";
+import mobileVerificationRoutes from "./routes/mobileVerificationRoutes.js";
+import {
+  errorMiddleware,
+  notFoundMiddleware,
+} from "./middlewares/errorMiddleware.js";
 
 const app = express();
 
@@ -19,7 +27,7 @@ app.use(
       callback(null, !origin || origin === frontendUrl);
     },
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
@@ -31,6 +39,11 @@ app.use("/api/retailer", retailerRoutes);
 app.use("/api/expert", expertRoutes);
 app.use("/api/partner", partnerRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/public", publicCmsRoutes);
+app.use("/api/admin/cms", adminCmsRoutes);
+app.use("/api/dashboard", dashboardModuleRoutes);
+app.use("/api/admin/dashboard-modules", adminDashboardModuleRoutes);
+app.use("/api/mobile-verification", mobileVerificationRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use(notFoundMiddleware);

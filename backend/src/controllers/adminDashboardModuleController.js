@@ -1,0 +1,10 @@
+import * as service from "../services/dashboardModuleService.js";
+const send = (handler, status = 200) => async (req, res, next) => { try { return res.status(status).json({ success: true, ...(await handler(req)) }); } catch (error) { return next(error); } };
+export const resources = send(async (req) => ({ items: await service.adminListResources(req.params.type) }));
+export const createResource = send(async (req) => ({ item: await service.adminCreateResource(req.params.type, req.body, req.auth.userId) }), 201);
+export const updateResource = send(async (req) => ({ item: await service.adminUpdateResource(req.params.type, req.params.id, req.body, req.auth.userId) }));
+export const tickets = send(async (req) => service.adminListTickets(req.query));
+export const updateTicket = send(async (req) => ({ ticket: await service.adminUpdateTicket(req.auth.userId, req.params.id, req.body) }));
+export const replyTicket = send(async (req) => ({ ticket: await service.adminReplyTicket(req.auth.userId, req.params.id, req.body.message) }));
+export const renewals = send(async (req) => service.adminListRenewals(req.query));
+export const reviewRenewal = send(async (req) => ({ renewal: await service.adminReviewRenewal(req.auth.userId, req.params.id, req.body) }));

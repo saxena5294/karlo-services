@@ -1,0 +1,15 @@
+import API from "./axiosInstance";
+const data = (request) => request.then((response) => response.data);
+export const getSoftware = () => data(API.get("/dashboard/software"));
+export const getDeclarationForms = () => data(API.get("/dashboard/declaration-forms"));
+export const getPaymentHistory = (params = {}) => data(API.get("/dashboard/payments", { params }));
+export const getRewards = (params = {}) => data(API.get("/dashboard/rewards", { params }));
+export const getReferrals = () => data(API.get("/dashboard/referrals"));
+export const claimReferral = (referralCode) => data(API.post("/dashboard/referrals/claim", { referralCode }));
+export const getRenewal = () => data(API.get("/dashboard/renewal"));
+export const requestRenewal = () => data(API.post("/dashboard/renewal/requests"));
+export const getTickets = (params = {}) => data(API.get("/dashboard/tickets", { params }));
+export const createTicket = (payload) => data(API.post("/dashboard/tickets", payload));
+export const getTicket = (id) => data(API.get(`/dashboard/tickets/${encodeURIComponent(id)}`));
+export const replyTicket = (id, message) => data(API.post(`/dashboard/tickets/${encodeURIComponent(id)}/replies`, { message }));
+export const closeTicket = (id) => data(API.patch(`/dashboard/tickets/${encodeURIComponent(id)}/close`));

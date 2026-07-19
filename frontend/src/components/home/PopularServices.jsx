@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import { getPopularServices } from "../../api/serviceApi";
 import ServiceCard from "./ServiceCard";
 
-const PopularServices = () => {
-  const [services, setServices] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+const PopularServices = ({ services: providedServices }) => {
+  const [services, setServices] = useState(providedServices || []);
+  const [isLoading, setIsLoading] = useState(providedServices === undefined);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (providedServices !== undefined) return;
     const fetchPopularServices = async () => {
       try {
         setIsLoading(true);
@@ -28,7 +29,9 @@ const PopularServices = () => {
     };
 
     fetchPopularServices();
-  }, []);
+  }, [providedServices]);
+
+  const visibleServices = providedServices ?? services;
 
   return (
     <section className="py-14 sm:py-16 lg:py-20">
@@ -80,7 +83,7 @@ const PopularServices = () => {
           </div>
         )}
 
-        {!isLoading && !error && services.length === 0 && (
+        {!isLoading && !error && visibleServices.length === 0 && (
           <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-8 text-center">
             <p className="font-semibold text-slate-800">
               No services are available right now.
@@ -92,9 +95,9 @@ const PopularServices = () => {
           </div>
         )}
 
-        {!isLoading && !error && services.length > 0 && (
+        {!isLoading && !error && visibleServices.length > 0 && (
           <div className="mt-8 grid gap-5 sm:mt-10 sm:grid-cols-2 lg:grid-cols-3">
-            {services.map((service) => (
+            {visibleServices.map((service) => (
               <ServiceCard key={service._id} service={service} />
             ))}
           </div>

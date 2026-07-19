@@ -16,12 +16,20 @@ import {
   ScrollText,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { dashboardFeatures } from "../../config/dashboardFeatures";
 
 const customerNavigation = [
   { name: "Dashboard", path: "/customer/dashboard", icon: LayoutDashboard },
+  { name: "Services", path: "/customer/services", icon: Wrench },
   { name: "My Applications", path: "/customer/applications", icon: FileText },
-  { name: "Browse Services", path: "/services", icon: Wrench },
-  { name: "Track Application", path: "/track", icon: Search },
+  { name: "Form History", path: "/customer/form-history", icon: ClipboardList },
+  { name: "Software", path: "/customer/software", icon: Wrench, disabled: !dashboardFeatures.softwareDownloads },
+  { name: "Declaration Forms", path: "/customer/declaration-forms", icon: FileText, disabled: !dashboardFeatures.declarationForms },
+  { name: "Payment History", path: "/customer/payment-history", icon: BarChart3, disabled: !dashboardFeatures.paymentHistory },
+  { name: "Refer & Earn", path: "/customer/refer-and-earn", icon: Users, disabled: !dashboardFeatures.referAndEarn },
+  { name: "Rewards", path: "/customer/rewards", icon: Store, disabled: !dashboardFeatures.rewards },
+  { name: "Notifications", path: "/customer/notifications", icon: Bell },
+  { name: "Help / Support", path: "/customer/help", icon: Search, disabled: !dashboardFeatures.customerSupport },
   { name: "Profile", path: "/customer/profile", icon: UserRound },
 ];
 
@@ -35,12 +43,20 @@ const expertNavigation = [
 
 const partnerNavigation = [
   { name: "Dashboard", path: "/partner/dashboard", icon: LayoutDashboard },
-  { name: "Available Leads", path: "/partner/leads", icon: Store },
-  { name: "Accepted Leads", path: "/partner/accepted-leads", icon: FileText },
-  { name: "Completed Leads", path: "/partner/completed-leads", icon: ListChecks },
-  { name: "Wallet", path: "/partner/wallet", icon: BarChart3 },
+  { name: "Services", path: "/partner/services", icon: Wrench },
+  { name: "Form History", path: "/partner/form-history", icon: ClipboardList },
+  { name: "Software", path: "/partner/software", icon: Wrench, disabled: !dashboardFeatures.softwareDownloads },
+  { name: "Declaration Forms", path: "/partner/declaration-forms", icon: FileText, disabled: !dashboardFeatures.declarationForms },
+  { name: "Payment History", path: "/partner/payment-history", icon: BarChart3, disabled: !dashboardFeatures.paymentHistory },
+  { name: "Renewal", path: "/partner/renewal", icon: ScrollText, disabled: !dashboardFeatures.renewal },
+  { name: "Refer & Earn", path: "/partner/refer-and-earn", icon: Users, disabled: !dashboardFeatures.referAndEarn },
+  { name: "Rewards", path: "/partner/rewards", icon: Store, disabled: !dashboardFeatures.rewards },
+  { name: "Help & Tickets", path: "/partner/help", icon: Search },
   { name: "Notifications", path: "/partner/notifications", icon: Bell },
   { name: "Profile", path: "/partner/profile", icon: UserRound },
+  { name: "Available Leads", path: "/partner/leads", icon: Store, disabled: !dashboardFeatures.availableLeads },
+  { name: "Accepted Leads", path: "/partner/accepted-leads", icon: FileText, disabled: !dashboardFeatures.acceptedLeads },
+  { name: "Accepted Work", path: "/partner/completed-leads", icon: ListChecks, disabled: !dashboardFeatures.acceptedWork },
 ];
 
 const adminNavigation = [
@@ -107,7 +123,11 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-4" aria-label={`${portalLabel} navigation`}>
-        {navigation.map(({ name, path, icon: Icon }) => (
+        {navigation.map(({ name, path, icon: Icon, disabled }) => disabled ? (
+          <div key={path} aria-disabled="true" title="This service will be available soon." className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-400 opacity-60">
+            <Icon size={20} /><span className="min-w-0 flex-1">{name}</span><span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">Coming Soon</span>
+          </div>
+        ) : (
           <Link
             key={path}
             to={path}
