@@ -12,7 +12,11 @@ export const getCloudinary = () => {
       throw new Error("Cloudinary environment variables are not configured");
     }
 
-    cloudinary.config({ cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret });
+    cloudinary.config({
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
+    });
     isConfigured = true;
   }
 
