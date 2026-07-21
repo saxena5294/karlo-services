@@ -6,16 +6,12 @@ export const getAdminDashboardSummary = () => getData(API.get("/admin/dashboard-
 export const getAdminApplications = (params = {}) => getData(API.get("/admin/applications", { params }));
 export const getAdminApplicationById = (id) => getData(API.get(`/admin/applications/${encodeURIComponent(id)}`));
 export const assignApplication = (id, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/assign`, data));
-export const assignRetailer = (id, data) => assignApplication(id, { assignmentType: "expert", assignedExpertId: data.retailerId, remarks: data.remarks });
 export const updateApplicationStatus = (id, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/status`, data));
 export const addApplicationRemark = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/remarks`, data));
 export const requestApplicationDocuments = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/request-documents`, data));
 export const publishApplicationLead = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/publish-lead`, data));
 export const getAdminCustomers = (params = {}) => getData(API.get("/admin/customers", { params }));
 export const getAdminCustomer = (id) => getData(API.get(`/admin/customers/${encodeURIComponent(id)}`));
-export const getAdminRetailers = (params = {}) => getData(API.get("/admin/retailers", { params }));
-export const createRetailer = (data) => getData(API.post("/admin/retailers", data));
-export const updateRetailer = (id, data) => getData(API.patch(`/admin/retailers/${encodeURIComponent(id)}`, data));
 export const getAdminExperts = (params = {}) => getData(API.get("/admin/experts", { params }));
 export const createExpert = (data) => getData(API.post("/admin/experts", data));
 export const updateExpert = (id, data) => getData(API.patch(`/admin/experts/${encodeURIComponent(id)}`, data));

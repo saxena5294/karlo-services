@@ -1,15 +1,15 @@
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getCustomerApplicationById } from "../../api/customerApi";
 import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatusBadge from "../../components/dashboard/StatusBadge";
+import DocumentViewer from "../../components/documents/DocumentViewer";
 import {
   formatDate,
   formatFieldName,
   formatFieldValue,
-  formatFileSize,
 } from "../../utils/dashboardFormatters";
 
 const CustomerApplicationDetails = () => {
@@ -37,7 +37,6 @@ const CustomerApplicationDetails = () => {
   const labels = Object.fromEntries(
     (application.serviceForm?.fields || []).map(({ name, label }) => [name, label])
   );
-  const allDocuments = [...(application.files || []), ...(application.additionalDocuments || [])];
 
   return (
     <div className="space-y-6">
@@ -50,10 +49,7 @@ const CustomerApplicationDetails = () => {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm sm:p-7">
-        <h2 className="text-lg font-bold">Completed documents</h2>
-        {!application.completionDocuments?.length ? <p className="mt-4 text-sm text-slate-500">Completed documents will appear here when your assigned team member uploads them.</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2">{application.completionDocuments.map((file, index) => <a key={`${file.originalName}-${index}`} href={file.secureUrl} target="_blank" rel="noreferrer" className="flex min-w-0 items-center gap-3 rounded-xl border border-emerald-200 p-4 text-emerald-800"><FileText size={20} className="shrink-0" /><span className="min-w-0"><strong className="block truncate">{file.originalName}</strong><span className="text-xs">{file.format?.toUpperCase() || "File"} · {formatFileSize(file.size)}</span></span></a>)}</div>}
-      </section>
+      <DocumentViewer applicationId={id} title="Application documents" />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold">Applicant data</h2>
@@ -62,17 +58,6 @@ const CustomerApplicationDetails = () => {
             <div key={key} className="min-w-0 border-b border-slate-100 pb-4"><dt className="text-sm font-medium text-slate-500">{labels[key] || formatFieldName(key)}</dt><dd className="mt-1 break-words font-semibold text-slate-800">{formatFieldValue(value)}</dd></div>
           ))}
         </dl>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-        <h2 className="text-lg font-bold">Uploaded documents</h2>
-        {!allDocuments.length ? <p className="mt-4 text-sm text-slate-500">No documents were uploaded with this application.</p> : (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {allDocuments.map((file, index) => (
-              <div key={`${file.fieldName}-${index}`} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><FileText size={20} /></span><div className="min-w-0"><p className="truncate font-semibold">{file.originalName}</p><p className="mt-1 text-xs text-slate-500">{labels[file.fieldName] || formatFieldName(file.fieldName)} · {file.format?.toUpperCase() || "File"} · {formatFileSize(file.size)}</p></div></div>
-            ))}
-          </div>
-        )}
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">

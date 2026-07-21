@@ -1,8 +1,7 @@
 import mongoose from "mongoose";
 import { ROLE_VALUES } from "../constants/roleConstants.js";
 
-// "retailer" remains readable during migration; new notifications use canonical roles.
-export const NOTIFICATION_ROLES = Object.freeze([...ROLE_VALUES, "retailer"]);
+export const NOTIFICATION_ROLES = ROLE_VALUES;
 export const NOTIFICATION_TYPES = Object.freeze([
   "application_submitted",
   "application_assigned",
@@ -14,6 +13,10 @@ export const NOTIFICATION_TYPES = Object.freeze([
   "application_rejected",
   "lead_accepted",
   "completion_documents_uploaded",
+  "document_verified",
+  "document_rejected",
+  "document_reupload_requested",
+  "document_replacement_submitted",
 ]);
 
 const notificationSchema = new mongoose.Schema(

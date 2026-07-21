@@ -12,6 +12,7 @@ const auditLogSchema = new mongoose.Schema({
   after: { type: mongoose.Schema.Types.Mixed, default: null },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
   ipAddress: { type: String, trim: true, maxlength: 80, default: "" },
+  userAgent: { type: String, trim: true, maxlength: 300, default: "" },
 }, { timestamps: { createdAt: true, updatedAt: false }, collection: "auditlogs" });
 
 auditLogSchema.index({ createdAt: -1 });

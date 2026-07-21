@@ -20,6 +20,7 @@ export const applicationFileSchema = new mongoose.Schema(
     publicId: { type: String, required: true },
     secureUrl: { type: String, required: true },
     resourceType: { type: String, required: true },
+    deliveryType: { type: String, enum: ["upload", "private", "authenticated"], default: "upload" },
     format: { type: String, default: "" },
     size: { type: Number, required: true },
     mimeType: { type: String, trim: true, default: "" },
@@ -27,8 +28,19 @@ export const applicationFileSchema = new mongoose.Schema(
     status: { type: String, enum: ["uploaded", "accepted", "rejected", "replacement_requested"], default: "uploaded" },
     uploadedAt: { type: Date, default: Date.now },
     customLabel: { type: String, trim: true, default: "" },
+    source: { type: String, enum: ["required", "additional", "replacement", "completion"], default: "required" },
+    uploadedBy: { type: String, trim: true, default: "" },
+    uploadedByRole: { type: String, enum: ["", "customer", "expert", "partner", "admin"], default: "" },
+    verificationStatus: { type: String, enum: ["pending", "verified", "rejected", "reupload_required"], default: "pending" },
+    verificationRemark: { type: String, trim: true, maxlength: 1000, default: "" },
+    verifiedBy: { type: String, trim: true, default: "" },
+    verifiedAt: { type: Date, default: null },
+    replacementRequested: { type: Boolean, default: false },
+    replacedDocumentId: { type: String, trim: true, default: "" },
+    isCurrent: { type: Boolean, default: true },
+    verificationHistory: { type: [{ status: { type: String, enum: ["pending", "verified", "rejected", "reupload_required"], required: true }, remark: { type: String, trim: true, maxlength: 1000, default: "" }, reviewedBy: { type: String, trim: true, required: true }, reviewedAt: { type: Date, required: true } }], default: [] },
   },
-  { _id: false }
+  { _id: true }
 );
 
 // Retained only so applications created before the timeline collection remain readable.
@@ -92,9 +104,7 @@ const applicationSchema = new mongoose.Schema(
     assignmentType: { type: String, enum: [...ASSIGNMENT_TYPE_VALUES, null], default: null },
     assignedExpertId: { type: String, trim: true, default: null },
     assignedPartnerId: { type: String, trim: true, default: null },
-    // Compatibility fields are dual-written until existing records are normalized.
     customerId: { type: String, trim: true, default: null },
-    assignedRetailerId: { type: String, trim: true, default: null },
     assignedBy: { type: String, trim: true, default: null },
     assignedAt: { type: Date, default: null },
     status: {
@@ -125,7 +135,7 @@ applicationSchema.pre("validate", function normalizeCompatibilityFields() {
   this.customerUserId ||= this.customerId || null;
   this.customerId ||= this.customerUserId || null;
 
-  if (!this.assignmentType && (this.assignedExpertId || this.assignedRetailerId)) {
+  if (!this.assignmentType && this.assignedExpertId) {
     this.assignmentType = ASSIGNMENT_TYPES.EXPERT;
   }
   if (!this.assignmentType && this.assignedPartnerId) {
@@ -133,17 +143,13 @@ applicationSchema.pre("validate", function normalizeCompatibilityFields() {
   }
 
   if (this.assignmentType === ASSIGNMENT_TYPES.EXPERT) {
-    this.assignedExpertId ||= this.assignedRetailerId || null;
-    this.assignedRetailerId = this.assignedExpertId || null;
     this.assignedPartnerId = null;
   } else if (this.assignmentType === ASSIGNMENT_TYPES.PARTNER) {
     this.assignedPartnerId ||= null;
     this.assignedExpertId = null;
-    this.assignedRetailerId = null;
   } else {
     this.assignedExpertId = null;
     this.assignedPartnerId = null;
-    this.assignedRetailerId = null;
   }
 });
 
@@ -151,7 +157,6 @@ applicationSchema.index({ customerUserId: 1, createdAt: -1 });
 applicationSchema.index({ customerId: 1, createdAt: -1 });
 applicationSchema.index({ assignmentType: 1, assignedExpertId: 1, createdAt: -1 });
 applicationSchema.index({ assignmentType: 1, assignedPartnerId: 1, createdAt: -1 });
-applicationSchema.index({ assignedRetailerId: 1, createdAt: -1 });
 applicationSchema.index({ status: 1, createdAt: -1 });
 applicationSchema.index({ customerUserId: 1, submissionKey: 1 }, { unique: true, sparse: true });
 

@@ -7,7 +7,6 @@ const applicationAssignmentSchema = new mongoose.Schema(
     assignmentType: { type: String, enum: ASSIGNMENT_TYPE_VALUES, required: true },
     expertUserId: { type: String, trim: true, default: null },
     partnerUserId: { type: String, trim: true, default: null },
-    retailerUserId: { type: String, trim: true, default: null },
     assignedBy: { type: String, required: true, trim: true },
     remarks: { type: String, trim: true, maxlength: 1000, default: "" },
     isActive: { type: Boolean, default: true },
@@ -17,14 +16,10 @@ const applicationAssignmentSchema = new mongoose.Schema(
 );
 
 applicationAssignmentSchema.pre("validate", function normalizeAssignment() {
-  if (!this.assignmentType && this.retailerUserId) this.assignmentType = ASSIGNMENT_TYPES.EXPERT;
   if (this.assignmentType === ASSIGNMENT_TYPES.EXPERT) {
-    this.expertUserId ||= this.retailerUserId || null;
-    this.retailerUserId = this.expertUserId || null;
     this.partnerUserId = null;
   } else {
     this.expertUserId = null;
-    this.retailerUserId = null;
   }
   if (!this.expertUserId && !this.partnerUserId) {
     this.invalidate("assignmentType", "An expert or partner assignee is required");
@@ -32,7 +27,6 @@ applicationAssignmentSchema.pre("validate", function normalizeAssignment() {
 });
 
 applicationAssignmentSchema.index({ application: 1, createdAt: -1 });
-applicationAssignmentSchema.index({ retailerUserId: 1, createdAt: -1 });
 applicationAssignmentSchema.index({ expertUserId: 1, createdAt: -1 });
 applicationAssignmentSchema.index({ partnerUserId: 1, createdAt: -1 });
 applicationAssignmentSchema.index(

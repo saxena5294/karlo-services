@@ -3,7 +3,6 @@ export const getHealthStatus = (req, res) => {
     success: true,
     message: "Karlo Services API is working",
     data: {
-      environment: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
     },
   });

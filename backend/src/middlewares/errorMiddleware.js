@@ -6,12 +6,16 @@ export const notFoundMiddleware = (req, res) => {
 };
 
 export const errorMiddleware = (error, _req, res, _next) => {
-  console.error(error);
-
   const isUploadError =
     error?.name === "MulterError" || error?.message?.includes("files are allowed");
   const statusCode = isUploadError ? 400 : error.statusCode || error.status || 500;
   const exposeError = statusCode < 500 || process.env.NODE_ENV === "development";
+
+  if (process.env.NODE_ENV === "development") {
+    console.error(error);
+  } else if (statusCode >= 500) {
+    console.error(`${error?.name || "Error"}: request failed with status ${statusCode}`);
+  }
 
   res.status(statusCode).json({
     success: false,

@@ -24,6 +24,7 @@ export const writeAuditLog = ({ req, action, entityType, entityId, summary, befo
   after: sanitizeAuditValue(after),
   metadata: sanitizeAuditValue(metadata) || {},
   ipAddress: String(req.ip || req.socket?.remoteAddress || "").slice(0, 80),
+  userAgent: String(req.get?.("user-agent") || "").slice(0, 300),
 });
 
 export const listAuditLogs = async (query = {}) => {

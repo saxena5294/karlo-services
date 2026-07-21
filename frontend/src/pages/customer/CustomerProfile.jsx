@@ -1,8 +1,8 @@
 import { ShieldCheck, UserRound } from "lucide-react";
 
 const CustomerProfile = () => {
-  const userId = import.meta.env.VITE_DEV_USER_ID || "dev_customer_001";
-  const role = import.meta.env.VITE_DEV_USER_ROLE || "customer";
+  const userId = import.meta.env.VITE_DEV_CUSTOMER_USER_ID || "dev_customer_001";
+  const role = "customer";
 
   return (
     <div className="max-w-2xl">

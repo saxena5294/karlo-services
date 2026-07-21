@@ -3,7 +3,6 @@ import {
   getAdminApplications as getAdminApplicationsService,
   getApplicationDetails as getApplicationDetailsService,
   getCustomerApplications as getCustomerApplicationsService,
-  getRetailerApplications as getRetailerApplicationsService,
   submitApplication as submitApplicationService,
   updateApplicationStatus as updateApplicationStatusService,
 } from "../services/applicationService.js";
@@ -65,12 +64,12 @@ export const updateApplicationStatus = async (req, res, next) => {
   }
 };
 
-export const assignRetailer = async (req, res, next) => {
+export const assignApplication = async (req, res, next) => {
   try {
     const application = await assignApplicationService({
       applicationNumber: req.params.applicationNumber,
       assignmentType: req.body.assignmentType || "expert",
-      assignedExpertId: req.body.assignedExpertId || req.body.retailerId,
+      assignedExpertId: req.body.assignedExpertId,
       assignedPartnerId: req.body.assignedPartnerId,
       remarks: req.body.remarks,
       updatedBy: getActorId(req),
@@ -98,18 +97,6 @@ export const getApplicationDetails = async (req, res, next) => {
 export const getCustomerApplications = async (req, res, next) => {
   try {
     const result = await getCustomerApplicationsService(req.auth.userId, req.query);
-    return res.status(200).json({ success: true, ...result });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-export const getRetailerApplications = async (req, res, next) => {
-  try {
-    const retailerId = req.auth.role === ROLES.EXPERT
-      ? req.auth.userId
-      : req.params.retailerId;
-    const result = await getRetailerApplicationsService(retailerId, req.query);
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     return next(error);

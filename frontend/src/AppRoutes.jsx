@@ -1,55 +1,66 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
 import PublicLayout from "./components/layout/PublicLayout";
-import CustomerApplicationDetails from "./pages/customer/CustomerApplicationDetails";
-import CustomerDashboard from "./pages/customer/CustomerDashboard";
-import CustomerProfile from "./pages/customer/CustomerProfile";
-import MyApplications from "./pages/customer/MyApplications";
-import ExpertApplicationDetails from "./pages/expert/ExpertApplicationDetails";
-import ExpertApplications from "./pages/expert/ExpertApplications";
-import ExpertDashboard from "./pages/expert/ExpertDashboard";
-import ExpertProfile from "./pages/expert/ExpertProfile";
-import NotificationsPage from "./pages/shared/NotificationsPage";
-import ComingSoonPage from "./pages/shared/ComingSoonPage";
-import DashboardServices from "./pages/shared/DashboardServices";
-import FormHistory from "./pages/shared/FormHistory";
-import { DeclarationFormsPage, PartnerRenewalPage, PaymentHistoryPage, ReferEarnPage, RewardsPage, SoftwarePage } from "./pages/shared/DashboardModules";
-import DashboardHelpPage from "./pages/shared/DashboardHelpPage";
-import AdminApplicationDetails from "./pages/admin/AdminApplicationDetails";
-import AdminApplications from "./pages/admin/AdminApplications";
-import AdminCustomers from "./pages/admin/AdminCustomers";
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AdminReports from "./pages/admin/AdminReports";
-import AdminExperts from "./pages/admin/AdminExperts";
-import AdminServiceForm from "./pages/admin/AdminServiceForm";
-import AdminServices from "./pages/admin/AdminServices";
-import AdminSettings from "./pages/admin/AdminSettings";
-import AdminAssignments from "./pages/admin/AdminAssignments";
-import AdminPartners from "./pages/admin/AdminPartners";
-import AdminPartnerDetails from "./pages/admin/AdminPartnerDetails";
-import AdminLeads from "./pages/admin/AdminLeads";
-import AdminLeadDetails from "./pages/admin/AdminLeadDetails";
-import ContentManagementPage from "./pages/admin/content/ContentManagementPage";
-import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
-import About from "./pages/public/About";
-import ApplyService from "./pages/public/ApplyService";
-import AuthPlaceholder from "./pages/public/AuthPlaceholder";
-import Contact from "./pages/public/Contact";
-import Home from "./pages/public/Home";
-import NotFound from "./pages/public/NotFound";
-import ServiceDetails from "./pages/public/ServiceDetails";
-import Services from "./pages/public/Services";
-import TrackApplication from "./pages/public/TrackApplication";
-import FaqPage from "./pages/public/FaqPage";
-import RefundPolicy from "./pages/public/RefundPolicy";
-import PartnerDashboard from "./pages/partner/PartnerDashboard";
-import PartnerLeadDetails from "./pages/partner/PartnerLeadDetails";
-import PartnerApplicationDetails from "./pages/partner/PartnerApplicationDetails";
-import PartnerWallet from "./pages/partner/PartnerWallet";
-import PartnerProfile from "./pages/partner/PartnerProfile";
+
+const page = (loader) => lazy(loader);
+const namedPage = (loader, name) => lazy(async () => ({ default: (await loader())[name] }));
+const CustomerApplicationDetails = page(() => import("./pages/customer/CustomerApplicationDetails"));
+const CustomerDashboard = page(() => import("./pages/customer/CustomerDashboard"));
+const CustomerProfile = page(() => import("./pages/customer/CustomerProfile"));
+const MyApplications = page(() => import("./pages/customer/MyApplications"));
+const ExpertApplicationDetails = page(() => import("./pages/expert/ExpertApplicationDetails"));
+const ExpertApplications = page(() => import("./pages/expert/ExpertApplications"));
+const ExpertDashboard = page(() => import("./pages/expert/ExpertDashboard"));
+const ExpertProfile = page(() => import("./pages/expert/ExpertProfile"));
+const NotificationsPage = page(() => import("./pages/shared/NotificationsPage"));
+const ComingSoonPage = page(() => import("./pages/shared/ComingSoonPage"));
+const DashboardServices = page(() => import("./pages/shared/DashboardServices"));
+const FormHistory = page(() => import("./pages/shared/FormHistory"));
+const loadDashboardModules = () => import("./pages/shared/DashboardModules");
+const DeclarationFormsPage = namedPage(loadDashboardModules, "DeclarationFormsPage");
+const PartnerRenewalPage = namedPage(loadDashboardModules, "PartnerRenewalPage");
+const PaymentHistoryPage = namedPage(loadDashboardModules, "PaymentHistoryPage");
+const ReferEarnPage = namedPage(loadDashboardModules, "ReferEarnPage");
+const RewardsPage = namedPage(loadDashboardModules, "RewardsPage");
+const SoftwarePage = namedPage(loadDashboardModules, "SoftwarePage");
+const DashboardHelpPage = page(() => import("./pages/shared/DashboardHelpPage"));
+const AdminApplicationDetails = page(() => import("./pages/admin/AdminApplicationDetails"));
+const AdminApplications = page(() => import("./pages/admin/AdminApplications"));
+const AdminCustomers = page(() => import("./pages/admin/AdminCustomers"));
+const AdminDashboard = page(() => import("./pages/admin/AdminDashboard"));
+const AdminReports = page(() => import("./pages/admin/AdminReports"));
+const AdminExperts = page(() => import("./pages/admin/AdminExperts"));
+const AdminServiceForm = page(() => import("./pages/admin/AdminServiceForm"));
+const AdminServices = page(() => import("./pages/admin/AdminServices"));
+const AdminSettings = page(() => import("./pages/admin/AdminSettings"));
+const AdminAssignments = page(() => import("./pages/admin/AdminAssignments"));
+const AdminPartners = page(() => import("./pages/admin/AdminPartners"));
+const AdminPartnerDetails = page(() => import("./pages/admin/AdminPartnerDetails"));
+const AdminLeads = page(() => import("./pages/admin/AdminLeads"));
+const AdminLeadDetails = page(() => import("./pages/admin/AdminLeadDetails"));
+const ContentManagementPage = page(() => import("./pages/admin/content/ContentManagementPage"));
+const AdminAuditLogs = page(() => import("./pages/admin/AdminAuditLogs"));
+const About = page(() => import("./pages/public/About"));
+const ApplyService = page(() => import("./pages/public/ApplyService"));
+const AuthPlaceholder = page(() => import("./pages/public/AuthPlaceholder"));
+const Contact = page(() => import("./pages/public/Contact"));
+const Home = page(() => import("./pages/public/Home"));
+const NotFound = page(() => import("./pages/public/NotFound"));
+const ServiceDetails = page(() => import("./pages/public/ServiceDetails"));
+const Services = page(() => import("./pages/public/Services"));
+const TrackApplication = page(() => import("./pages/public/TrackApplication"));
+const FaqPage = page(() => import("./pages/public/FaqPage"));
+const RefundPolicy = page(() => import("./pages/public/RefundPolicy"));
+const PartnerDashboard = page(() => import("./pages/partner/PartnerDashboard"));
+const PartnerLeadDetails = page(() => import("./pages/partner/PartnerLeadDetails"));
+const PartnerApplicationDetails = page(() => import("./pages/partner/PartnerApplicationDetails"));
+const PartnerWallet = page(() => import("./pages/partner/PartnerWallet"));
+const PartnerProfile = page(() => import("./pages/partner/PartnerProfile"));
 
 const AppRoutes = () => (
-  <Routes>
+  <Suspense fallback={<div className="flex min-h-64 items-center justify-center text-sm text-slate-500" role="status">Loading page…</div>}>
+    <Routes>
     <Route element={<PublicLayout />}>
       <Route path="/" element={<Home />} />
       <Route path="/services" element={<Services />} />
@@ -92,16 +103,6 @@ const AppRoutes = () => (
       <Route path="profile" element={<ExpertProfile />} />
       <Route path="notifications" element={<NotificationsPage />} />
     </Route>
-    {/* Temporary deep-link aliases for retailer-era bookmarks and notifications. */}
-    <Route path="/retailer" element={<DashboardLayout />}>
-      <Route index element={<Navigate to="dashboard" replace />} />
-      <Route path="dashboard" element={<ExpertDashboard />} />
-      <Route path="applications" element={<ExpertApplications />} />
-      <Route path="applications/:id" element={<ExpertApplicationDetails />} />
-      <Route path="profile" element={<ExpertProfile />} />
-      <Route path="notifications" element={<NotificationsPage />} />
-    </Route>
-
     {/* TODO(auth): replace development partner auth with the future production guard. */}
     <Route path="/partner" element={<DashboardLayout />}>
       <Route index element={<Navigate to="dashboard" replace />} />
@@ -138,7 +139,6 @@ const AppRoutes = () => (
       <Route path="partners/:id" element={<AdminPartnerDetails />} />
       <Route path="leads" element={<AdminLeads />} />
       <Route path="leads/:id" element={<AdminLeadDetails />} />
-      <Route path="retailers" element={<Navigate to="../experts" replace />} />
       <Route path="services" element={<AdminServices />} />
       <Route path="services/new" element={<AdminServiceForm />} />
       <Route path="services/:id/edit" element={<AdminServiceForm />} />
@@ -149,7 +149,8 @@ const AppRoutes = () => (
       <Route path="audit-logs" element={<AdminAuditLogs />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>
-  </Routes>
+    </Routes>
+  </Suspense>
 );
 
 export default AppRoutes;

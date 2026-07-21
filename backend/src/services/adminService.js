@@ -60,8 +60,8 @@ const buildApplicationFilter = async (query) => {
     if (!mongoose.isValidObjectId(query.serviceId)) throw new ApiError(400, "Invalid service filter");
     filter.service = query.serviceId;
   }
-  const expertId = query.expertId || query.retailerId;
-  if (expertId) filter.$and = [{ $or: [{ assignedExpertId: expertId.trim() }, { assignedRetailerId: expertId.trim() }] }];
+  const expertId = query.expertId;
+  if (expertId) filter.assignedExpertId = expertId.trim();
   if (query.assignmentType) filter.assignmentType = query.assignmentType;
   if (query.dateFrom || query.dateTo) {
     filter.createdAt = {};
@@ -93,7 +93,7 @@ export const getAdminApplications = async (query = {}) => {
   const { page, limit, skip } = paginate(query);
   const [documents, total, experts] = await Promise.all([
     Application.find(filter)
-      .select("applicationNumber customerUserId customerId service formData fulfillmentType assignmentType assignedExpertId assignedPartnerId assignedRetailerId assignedAt status createdAt updatedAt")
+      .select("applicationNumber customerUserId customerId service formData fulfillmentType assignmentType assignedExpertId assignedPartnerId assignedAt status createdAt updatedAt")
       .populate("service", "title slug category")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -107,9 +107,8 @@ export const getAdminApplications = async (query = {}) => {
     applications: documents.map(({ formData, ...item }) => ({
       ...item,
       customerName: customerName(formData),
-      assignedExpertName: expertNames.get(item.assignedExpertId || item.assignedRetailerId) || item.assignedExpertId || item.assignedRetailerId || "Unassigned",
-      assignedRetailerName: expertNames.get(item.assignedExpertId || item.assignedRetailerId) || item.assignedExpertId || item.assignedRetailerId || "Unassigned",
-      assigneeName: item.assignmentType === "partner" ? (item.assignedPartnerId || "Unassigned") : (expertNames.get(item.assignedExpertId || item.assignedRetailerId) || item.assignedExpertId || item.assignedRetailerId || "Unassigned"),
+      assignedExpertName: expertNames.get(item.assignedExpertId) || item.assignedExpertId || "Unassigned",
+      assigneeName: item.assignmentType === "partner" ? (item.assignedPartnerId || "Unassigned") : (expertNames.get(item.assignedExpertId) || item.assignedExpertId || "Unassigned"),
     })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   };
@@ -127,22 +126,19 @@ export const getAdminApplicationById = async (id) => {
     ApplicationTimeline.find({ application: application._id }).sort({ createdAt: 1 }).lean(),
     ApplicationNote.find({ application: application._id }).sort({ createdAt: -1 }).lean(),
     ApplicationAssignment.find({ application: application._id }).sort({ createdAt: -1 }).lean(),
-    (application.assignedExpertId || application.assignedRetailerId)
-      ? ExpertProfile.findOne({ userId: application.assignedExpertId || application.assignedRetailerId }).lean()
+    application.assignedExpertId
+      ? ExpertProfile.findOne({ userId: application.assignedExpertId }).lean()
       : null,
   ]);
   delete application.statusHistory;
-  application.files = application.files.map(({ fieldName, originalName, format, size }) => ({
-    fieldName,
-    originalName,
-    format,
-    size,
-  }));
+  const safeDocument = ({ fieldName, fieldKey, label, documentType, customLabel, originalName, mimeType, format, size, required, status, source, uploadedAt, verificationStatus, verificationRemark, replacementRequested }) => ({ fieldName, fieldKey, label, documentType, customLabel, originalName, mimeType, format, size, required, status, source, uploadedAt, verificationStatus, verificationRemark, replacementRequested });
+  application.files = application.files.map(safeDocument);
+  application.additionalDocuments = (application.additionalDocuments || []).map(safeDocument);
+  application.completionDocuments = (application.completionDocuments || []).map(safeDocument);
   return {
     ...application,
     customerName: customerName(application.formData),
     assignedExpert: expert,
-    assignedRetailer: expert,
     timeline,
     internalRemarks,
     assignmentHistory,
@@ -155,11 +151,11 @@ const findApplicationNumber = async (id) => {
   return application.applicationNumber;
 };
 
-export const assignAdminApplication = async ({ id, assignmentType, assignedExpertId, assignedPartnerId, retailerId, remarks, adminUserId }) =>
+export const assignAdminApplication = async ({ id, assignmentType, assignedExpertId, assignedPartnerId, remarks, adminUserId }) =>
   assignApplication({
     applicationNumber: await findApplicationNumber(id),
-    assignmentType: assignmentType ?? (retailerId ? "expert" : null),
-    assignedExpertId: assignedExpertId || retailerId,
+    assignmentType,
+    assignedExpertId,
     assignedPartnerId,
     remarks,
     updatedBy: adminUserId,
@@ -242,13 +238,12 @@ export const getAdminExperts = async (query = {}) => {
   ]);
   const ids = profiles.map((item) => item.userId);
   const counts = await Application.aggregate([
-    { $match: { $or: [{ assignedExpertId: { $in: ids } }, { assignedRetailerId: { $in: ids } }] } },
-    { $group: { _id: { $ifNull: ["$assignedExpertId", "$assignedRetailerId"] }, activeAssignments: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, pendingApplications: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "Documents Required", "Processing", "Approved", "processing", "under_review"]] }, 1, 0] } } } },
+    { $match: { assignedExpertId: { $in: ids } } },
+    { $group: { _id: "$assignedExpertId", activeAssignments: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, pendingApplications: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "Documents Required", "Processing", "Approved", "processing", "under_review"]] }, 1, 0] } } } },
   ]);
   const countMap = new Map(counts.map((item) => [item._id, item]));
   return {
     experts: profiles.map((item) => { const countsForExpert = countMap.get(item.userId) || {}; const totalWork = (countsForExpert.completedApplications || 0) + (countsForExpert.pendingApplications || 0); return { ...item, activeAssignments: countsForExpert.activeAssignments || 0, completedApplications: countsForExpert.completedApplications || 0, pendingApplications: countsForExpert.pendingApplications || 0, completionRate: totalWork ? ((countsForExpert.completedApplications || 0) / totalWork) * 100 : 0 }; }),
-    retailers: profiles.map((item) => ({ ...item, activeAssignments: countMap.get(item.userId)?.activeAssignments || 0, completedApplications: countMap.get(item.userId)?.completedApplications || 0, pendingApplications: countMap.get(item.userId)?.pendingApplications || 0 })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   };
 };
@@ -367,7 +362,7 @@ export const getAdminReports = async () => {
   const [byStatus, byService, byExpert, byDate, totals, leadsByStatus, leadsByCity, partnerPerformance] = await Promise.all([
     Application.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Application.aggregate([{ $group: { _id: "$service", count: { $sum: 1 } } }, { $lookup: { from: "services", localField: "_id", foreignField: "_id", as: "service" } }, { $unwind: { path: "$service", preserveNullAndEmptyArrays: true } }, { $project: { _id: 0, serviceId: "$_id", serviceTitle: { $ifNull: ["$service.title", "Unknown service"] }, count: 1 } }, { $sort: { count: -1 } }]),
-    Application.aggregate([{ $match: { $or: [{ assignedExpertId: { $nin: [null, ""] } }, { assignedRetailerId: { $nin: [null, ""] } }] } }, { $group: { _id: { $ifNull: ["$assignedExpertId", "$assignedRetailerId"] }, count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { assignedExpertId: { $nin: [null, ""] } } }, { $group: { _id: "$assignedExpertId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
     Application.aggregate([{ $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 30 }]),
     Application.aggregate([{ $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] } }, averageProcessingMs: { $avg: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, { $subtract: ["$updatedAt", "$createdAt"] }, null] } } } }]),
     Lead.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
@@ -376,7 +371,7 @@ export const getAdminReports = async () => {
   ]);
   const summary = totals[0] || { total: 0, completed: 0, rejected: 0, averageProcessingMs: 0 };
   const leadTotal = leadsByStatus.reduce((sum, item) => sum + item.count, 0); const acceptedTotal = leadsByStatus.filter((item) => ["accepted", "completed"].includes(item._id)).reduce((sum, item) => sum + item.count, 0);
-  return { byStatus, byService, byExpert, byRetailer: byExpert, byDate, leadsByStatus, leadsByCity, partnerPerformance, leadAcceptanceRate: leadTotal ? (acceptedTotal / leadTotal) * 100 : 0, customerGrowth: byDate, servicePopularity: byService, completionRate: summary.total ? (summary.completed / summary.total) * 100 : 0, rejectionRate: summary.total ? (summary.rejected / summary.total) * 100 : 0, averageProcessingMs: summary.averageProcessingMs || 0 };
+  return { byStatus, byService, byExpert, byDate, leadsByStatus, leadsByCity, partnerPerformance, leadAcceptanceRate: leadTotal ? (acceptedTotal / leadTotal) * 100 : 0, customerGrowth: byDate, servicePopularity: byService, completionRate: summary.total ? (summary.completed / summary.total) * 100 : 0, rejectionRate: summary.total ? (summary.rejected / summary.total) * 100 : 0, averageProcessingMs: summary.averageProcessingMs || 0 };
 };
 
 export const getAdminDashboardSummary = async () => {
@@ -422,7 +417,6 @@ export const getAdminDashboardSummary = async () => {
       acceptedLeads,
       pendingPartnerApprovals: pendingPartners,
       activePartners,
-      totalRetailers: experts,
     },
     recentApplications: recent.applications,
     applicationsByStatus: reports.byStatus,
@@ -430,8 +424,3 @@ export const getAdminDashboardSummary = async () => {
     recentActivity: activity,
   };
 };
-
-// Deprecated admin-service aliases retained while clients migrate to expert naming.
-export const getAdminRetailers = getAdminExperts;
-export const createRetailerProfile = createExpertProfile;
-export const updateRetailerProfile = updateExpertProfile;

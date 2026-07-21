@@ -18,6 +18,17 @@ export const uploadApplicationFiles = multer({
   },
 }).any();
 
+export const uploadSingleApplicationFile = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      return callback(new Error("Please upload a JPG, PNG or PDF file smaller than 10 MB"));
+    }
+    callback(null, true);
+  },
+}).single("file");
+
 const imageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 export const uploadCmsImage = multer({
   storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 },

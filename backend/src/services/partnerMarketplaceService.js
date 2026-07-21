@@ -193,7 +193,6 @@ export const acceptLead = async (partnerId, id, { actorUserId = partnerId, manua
       _id: acceptedLead.application,
       assignedExpertId: { $in: [null, ""] },
       assignedPartnerId: { $in: [null, ""] },
-      assignedRetailerId: { $in: [null, ""] },
     }).session(session);
     if (!application || ![FULFILLMENT_TYPES.PARTNER, FULFILLMENT_TYPES.HYBRID].includes(application.fulfillmentType)) {
       throw new ApiError(409, "The application is not available for partner assignment");
@@ -201,7 +200,6 @@ export const acceptLead = async (partnerId, id, { actorUserId = partnerId, manua
     application.assignmentType = ASSIGNMENT_TYPES.PARTNER;
     application.assignedPartnerId = partnerId.trim();
     application.assignedExpertId = null;
-    application.assignedRetailerId = null;
     application.assignedBy = manual ? actorUserId : (acceptedLead.publishedByAdminId || "marketplace");
     application.assignedAt = now;
     if (application.status === APPLICATION_STATUSES.SUBMITTED) application.status = APPLICATION_STATUSES.ASSIGNED;
@@ -262,7 +260,7 @@ export const publishApplicationLead = async ({ applicationId, adminUserId, paylo
   if (![FULFILLMENT_TYPES.PARTNER, FULFILLMENT_TYPES.HYBRID].includes(application.fulfillmentType)) {
     throw new ApiError(409, "Only partner or hybrid applications can be published as leads");
   }
-  if (application.assignedExpertId || application.assignedPartnerId || application.assignedRetailerId) {
+  if (application.assignedExpertId || application.assignedPartnerId) {
     throw new ApiError(409, "Assigned applications cannot be published as leads");
   }
   const existingLead = await Lead.findOne({ application: application._id }).select("status").lean();
@@ -344,7 +342,7 @@ export const uploadCompletionDocuments = async ({ partnerId, id, files = [] }) =
   try {
     for (const file of files) {
       const result = await uploadBuffer(file, application.applicationNumber, "completion-documents");
-      uploaded.push({ fieldName: "completionDocuments", originalName: file.originalname, publicId: result.public_id, secureUrl: result.secure_url, resourceType: result.resource_type, format: result.format || "", size: result.bytes ?? file.size });
+      uploaded.push({ fieldName: "completionDocuments", label: "Completion Document", originalName: file.originalname, publicId: result.public_id, secureUrl: result.secure_url, resourceType: result.resource_type, deliveryType: result.type || "authenticated", format: result.format || "", size: result.bytes ?? file.size, mimeType: file.mimetype, source: "completion", uploadedBy: partnerId.trim(), uploadedByRole: ROLES.PARTNER, verificationStatus: "pending" });
     }
     await mongoose.connection.transaction(async (session) => {
       application.completionDocuments.push(...uploaded);
@@ -368,7 +366,7 @@ export const uploadCompletionDocuments = async ({ partnerId, id, files = [] }) =
         session,
       });
     });
-    return uploaded.map(({ publicId, ...document }) => document);
+    return uploaded.map(({ publicId, secureUrl, ...document }) => document);
   } catch (error) {
     await removeUploadedFiles(uploaded);
     throw error;

@@ -21,7 +21,7 @@ export const sendMobileOtp = async (userId, value) => {
   const inWindow = existing && now - existing.windowStartedAt < WINDOW_MS; const sendCount = inWindow ? existing.sendCount + 1 : 1;
   if (sendCount > MAX_SENDS) throw new ApiError(429, "OTP send limit reached. Try again later");
   const otp = String(crypto.randomInt(100000, 1000000)); await sendSms(mobileNumber, otp);
-  await MobileOtp.findOneAndUpdate({ userId, mobileNumber }, { $set: { otpHash: otpHash(userId, mobileNumber, otp), expiresAt: new Date(now.getTime() + OTP_EXPIRY_MS), resendAvailableAt: new Date(now.getTime() + RESEND_MS), attemptsRemaining: MAX_ATTEMPTS, sendCount, windowStartedAt: inWindow ? existing.windowStartedAt : now, verifiedAt: null } }, { upsert: true, runValidators: true, setDefaultsOnInsert: true });
+  await MobileOtp.findOneAndUpdate({ userId, mobileNumber }, { $set: { otpHash: otpHash(userId, mobileNumber, otp), expiresAt: new Date(now.getTime() + OTP_EXPIRY_MS), resendAvailableAt: new Date(now.getTime() + RESEND_MS), attemptsRemaining: MAX_ATTEMPTS, sendCount, windowStartedAt: inWindow ? existing.windowStartedAt : now, verifiedAt: null, verificationTokenHash: null, verificationExpiresAt: null, consumedAt: null } }, { upsert: true, runValidators: true, setDefaultsOnInsert: true });
   return { mobileNumber, expiresInSeconds: OTP_EXPIRY_MS / 1000, resendAfterSeconds: RESEND_MS / 1000, ...(process.env.NODE_ENV !== "production" ? { developmentOtp: otp } : {}) };
 };
 
@@ -30,7 +30,20 @@ export const verifyMobileOtp = async (userId, value, otpValue) => {
   const mobileNumber = normalizeIndianMobile(value); const otp = String(otpValue || "").trim(); if (!/^\d{6}$/.test(otp)) throw new ApiError(400, "Enter the 6-digit OTP");
   const record = await MobileOtp.findOne({ userId, mobileNumber }); if (!record || record.expiresAt <= new Date()) throw new ApiError(400, "OTP has expired. Request a new OTP"); if (record.attemptsRemaining <= 0) throw new ApiError(429, "Maximum OTP attempts reached");
   if (!safeEqual(record.otpHash, otpHash(userId, mobileNumber, otp))) { record.attemptsRemaining -= 1; await record.save(); throw new ApiError(400, `Incorrect OTP. ${record.attemptsRemaining} attempts remaining`); }
-  record.verifiedAt = new Date(); record.otpHash = crypto.randomBytes(32).toString("hex"); await record.save();
-  return { mobileNumber, mobileVerificationToken: signToken({ userId, mobileNumber, exp: Date.now() + 15 * 60 * 1000 }) };
+  const verificationExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+  const mobileVerificationToken = signToken({ userId, mobileNumber, exp: verificationExpiresAt.getTime(), nonce: crypto.randomBytes(24).toString("base64url") });
+  record.verifiedAt = new Date(); record.otpHash = crypto.randomBytes(32).toString("hex"); record.expiresAt = verificationExpiresAt; record.verificationTokenHash = crypto.createHash("sha256").update(mobileVerificationToken).digest("hex"); record.verificationExpiresAt = verificationExpiresAt; record.consumedAt = null; await record.save();
+  return { mobileNumber, mobileVerificationToken };
 };
 export const validateMobileVerificationToken = (token, userId, value) => { const mobileNumber = normalizeIndianMobile(value); const [encoded, signature] = String(token || "").split("."); if (!encoded || !signature) throw new ApiError(400, "Mobile verification is required"); const expected = crypto.createHmac("sha256", secret("OTP_TOKEN_SECRET")).update(encoded).digest("base64url"); if (!safeEqual(signature, expected)) throw new ApiError(400, "Mobile verification is invalid"); let payload; try { payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")); } catch { throw new ApiError(400, "Mobile verification is invalid"); } if (payload.userId !== userId || payload.mobileNumber !== mobileNumber || payload.exp < Date.now()) throw new ApiError(400, "Mobile verification has expired or does not match"); return mobileNumber; };
+export const consumeMobileVerificationToken = async (token, userId, value, session) => {
+  const mobileNumber = validateMobileVerificationToken(token, userId, value);
+  const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex");
+  const consumed = await MobileOtp.findOneAndUpdate(
+    { userId, mobileNumber, verificationTokenHash: tokenHash, verificationExpiresAt: { $gt: new Date() }, consumedAt: null },
+    { $set: { consumedAt: new Date() } },
+    { new: true, session }
+  ).select("_id");
+  if (!consumed) throw new ApiError(409, "Mobile verification has already been used or has expired");
+  return mobileNumber;
+};

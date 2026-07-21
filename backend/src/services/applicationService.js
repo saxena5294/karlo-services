@@ -25,7 +25,6 @@ import {
   sanitizeNotificationText,
 } from "./notificationService.js";
 import { conditionalMatches, getEffectiveFields } from "./formConfigurationService.js";
-import { validateMobileVerificationToken } from "./mobileVerificationService.js";
 import { assertServiceCanAcceptApplications } from "./serviceAvailabilityService.js";
 import { verifyCaptcha } from "./captchaService.js";
 import { assertVariantAvailable, findServiceBySlugOrLegacy, variantForm } from "./serviceVariantService.js";
@@ -43,12 +42,13 @@ const ASSIGNEE_STATUS_VALUES = new Set([
 const createApplicationNumber = () =>
   `KARLO-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
 
-export const uploadBuffer = (file, applicationNumber, folder = "applications") =>
+export const uploadBuffer = (file, applicationNumber, folder = "applications", { deliveryType = "authenticated" } = {}) =>
   new Promise((resolve, reject) => {
     const upload = getCloudinary().uploader.upload_stream(
       {
         folder: `karlo-services/${applicationNumber}/${folder}`,
         resource_type: "auto",
+        type: deliveryType,
         use_filename: true,
         unique_filename: true,
       },
@@ -62,11 +62,19 @@ export const removeUploadedFiles = async (files) => {
   if (!files.length) return;
 
   const cloudinary = getCloudinary();
-  await Promise.allSettled(
-    files.map(({ publicId, resourceType }) =>
-      cloudinary.uploader.destroy(publicId, { resource_type: resourceType })
+  const results = await Promise.allSettled(
+    files.map(({ publicId, resourceType, deliveryType }) =>
+      cloudinary.uploader.destroy(publicId, { resource_type: resourceType, type: deliveryType || "upload" })
     )
   );
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      console.error("Cloudinary rollback failed", {
+        publicId: files[index].publicId,
+        reason: result.reason?.message || "Unknown cleanup error",
+      });
+    }
+  });
 };
 
 const normalizeBodyValue = (value) => {
@@ -222,7 +230,7 @@ export const validateSubmission = (form, body, files) => {
   if (additionalFiles.length > Math.min(form.maxAdditionalDocuments ?? 6, 6)) errors.push("You can add a maximum of 6 additional documents");
   if (additionalFiles.some((file) => file.size > 10 * 1024 * 1024 || !["image/jpeg", "image/png", "application/pdf"].includes(file.mimetype) || !hasAllowedFileSignature(file))) errors.push("Please upload a JPG, PNG or PDF file smaller than 10 MB");
   if (!/^[\p{L}][\p{L}\p{M} .'-]{1,119}$/u.test(String(body.applicantName || "").trim())) errors.push("Applicant Name must contain at least 2 valid English or Hindi characters");
-  if (!/^[6-9]\d{9}$/.test(String(body.mobileNumber || "").trim())) errors.push("Mobile Number must be a valid 10-digit Indian mobile number");
+  if (!/^[6-9]\d{9}$/.test(String(body.mobileNumber || "").trim())) errors.push("Mobile Number must contain exactly 10 digits, use numbers only, and start with 6, 7, 8, or 9");
   if (String(body.additionalDetails || "").length > 2000) errors.push("Additional Details cannot exceed 2000 characters");
   if (body.termsAccepted !== "true") errors.push("You must accept the declaration before submission");
 
@@ -283,9 +291,7 @@ const customerOwnerFilter = (customerUserId) => ({
   $or: [{ customerUserId }, { customerId: customerUserId }],
 });
 
-const expertOwnerFilter = (expertUserId) => ({
-  $or: [{ assignedExpertId: expertUserId }, { assignedRetailerId: expertUserId }],
-});
+const expertOwnerFilter = (expertUserId) => ({ assignedExpertId: expertUserId });
 
 const partnerOwnerFilter = (partnerUserId) => ({
   assignmentType: ASSIGNMENT_TYPES.PARTNER,
@@ -293,7 +299,7 @@ const partnerOwnerFilter = (partnerUserId) => ({
 });
 
 const getCustomerUserId = (application) => application.customerUserId || application.customerId;
-const getAssignedExpertId = (application) => application.assignedExpertId || application.assignedRetailerId;
+const getAssignedExpertId = (application) => application.assignedExpertId;
 
 const buildCustomerFilter = async (customerId, query = {}) => {
   if (!customerId?.trim()) throw new ApiError(400, "Customer identity is required");
@@ -321,7 +327,7 @@ const listApplications = async (filter, query = {}) => {
   const { page, limit, skip } = getPagination(query);
   const [applications, total] = await Promise.all([
     Application.find(filter)
-      .select("-formData -files")
+      .select("-formData -files -additionalDocuments -completionDocuments")
       .populate("service", "title slug category processingTime price")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -571,13 +577,13 @@ export const submitApplication = async ({
   const form = variantForm(storedForm, variant);
   if (!form) throw new ApiError(404, "Application form is not configured");
 
-  const mobileNumber = validateMobileVerificationToken(body.mobileVerificationToken, customerId, body.mobileNumber);
   if (form.captchaRequired !== false) await verifyCaptcha(body.captchaToken, remoteIp);
 
   const validationErrors = validateSubmission(form, body, files);
   if (validationErrors.length) {
     throw new ApiError(400, "Invalid application", validationErrors);
   }
+  const mobileNumber = String(body.mobileNumber).trim();
 
   const applicationNumber = createApplicationNumber();
   const uploadedFiles = [];
@@ -599,14 +605,19 @@ export const submitApplication = async ({
         documentType: additional ? "additional" : String(body[`${file.fieldname}__documentType`] || "").trim(),
         customLabel,
         originalName: safeFileName(file.originalname),
-        publicId: result.public_id,
-        secureUrl: result.secure_url,
-        resourceType: result.resource_type,
+          publicId: result.public_id,
+          secureUrl: result.secure_url,
+          resourceType: result.resource_type,
+          deliveryType: result.type || "authenticated",
         format: result.format || "",
         size: result.bytes ?? file.size,
         mimeType: file.mimetype,
-        required: additional ? false : Boolean(field?.required),
-        status: "uploaded",
+          required: additional ? false : Boolean(field?.required),
+          status: "uploaded",
+          source: additional ? "additional" : "required",
+          uploadedBy: customerId,
+          uploadedByRole: ROLES.CUSTOMER,
+          verificationStatus: "pending",
         uploadedAt: new Date(),
       });
     }
@@ -652,7 +663,7 @@ export const submitApplication = async ({
           submittedByRole,
           applicantName: String(body.applicantName).trim().replace(/\s+/g, " "),
           mobileNumber,
-          mobileVerified: true,
+          mobileVerified: false,
           email: String(body.email || "").trim().toLowerCase(),
           additionalDetails: String(body.additionalDetails || "").trim(),
           submittedAt: new Date(),
@@ -792,7 +803,6 @@ export const assignApplication = async ({
     application.assignmentType = normalizedType;
     application.assignedExpertId = normalizedType === ASSIGNMENT_TYPES.EXPERT ? expertId : null;
     application.assignedPartnerId = normalizedType === ASSIGNMENT_TYPES.PARTNER ? partnerId : null;
-    application.assignedRetailerId = normalizedType === ASSIGNMENT_TYPES.EXPERT ? expertId : null;
     application.assignedBy = normalizedType ? updatedBy : null;
     application.assignedAt = normalizedType ? now : null;
     if (normalizedType && currentStatus === APPLICATION_STATUSES.SUBMITTED) {
@@ -815,7 +825,6 @@ export const assignApplication = async ({
           assignmentType: normalizedType,
           expertUserId: normalizedType === ASSIGNMENT_TYPES.EXPERT ? expertId : null,
           partnerUserId: normalizedType === ASSIGNMENT_TYPES.PARTNER ? partnerId : null,
-          retailerUserId: normalizedType === ASSIGNMENT_TYPES.EXPERT ? expertId : null,
           assignedBy: updatedBy,
           remarks: cleanRemarks,
           isActive: true,
@@ -858,13 +867,6 @@ export const assignApplication = async ({
   });
   return application;
 };
-
-// Backward-compatible service signature used by legacy API aliases.
-export const assignRetailer = ({ retailerId, ...options }) => assignApplication({
-  ...options,
-  assignmentType: ASSIGNMENT_TYPES.EXPERT,
-  assignedExpertId: retailerId,
-});
 
 const getApplicationDetailsByFilter = async (filter) => {
   const application = await Application.findOne(filter)
@@ -977,13 +979,12 @@ export const getCustomerApplicationById = async (customerId, id) => {
   });
 
   const safeFiles = application.files.map(
-    ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({
+    ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt }) => ({
       fieldName,
       fieldKey,
       label,
       documentType,
       originalName,
-      secureUrl,
       mimeType,
       format,
       size,
@@ -992,9 +993,9 @@ export const getCustomerApplicationById = async (customerId, id) => {
       uploadedAt,
     })
   );
-  const safeAdditionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
+  const safeAdditionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }));
   const safeCompletionDocuments = (application.completionDocuments || []).map(
-    ({ fieldName, originalName, secureUrl, format, size }) => ({ fieldName, originalName, secureUrl, format, size })
+    ({ fieldName, originalName, format, size }) => ({ fieldName, originalName, format, size })
   );
   // Timeline remarks are customer-facing. Future internal notes need a separate protected field.
   const safeTimeline = application.timeline.map(({ status, remarks, createdAt }) => ({
@@ -1007,7 +1008,6 @@ export const getCustomerApplicationById = async (customerId, id) => {
   delete safeApplication.assignedBy;
   delete safeApplication.assignedExpertId;
   delete safeApplication.assignedPartnerId;
-  delete safeApplication.assignedRetailerId;
   delete safeApplication.customerUserId;
   delete safeApplication.customerId;
   delete safeApplication.files;
@@ -1103,7 +1103,7 @@ export const getExpertDashboardSummary = async (expertId) => {
         },
       },
       { $unwind: "$applicationDocument" },
-      { $match: { $or: [{ "applicationDocument.assignedExpertId": expertId.trim() }, { "applicationDocument.assignedRetailerId": expertId.trim() }] } },
+      { $match: { "applicationDocument.assignedExpertId": expertId.trim() } },
       { $count: "count" },
     ]),
     getExpertApplications(expertId, { page: 1, limit: 5 }),
@@ -1130,9 +1130,9 @@ export const getExpertApplicationById = async (expertId, id) => {
   const safeApplication = { ...application };
   safeApplication.customerName = getCustomerName(application.formData);
   safeApplication.files = application.files.map(
-    ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt })
+    ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt })
   );
-  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
+  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }));
   safeApplication.timeline = application.timeline.map(({ status, remarks, createdAt }) => ({
     status,
     remarks,
@@ -1141,7 +1141,6 @@ export const getExpertApplicationById = async (expertId, id) => {
   delete safeApplication.assignedBy;
   delete safeApplication.assignedExpertId;
   delete safeApplication.assignedPartnerId;
-  delete safeApplication.assignedRetailerId;
   delete safeApplication.customerUserId;
   delete safeApplication.customerId;
   return safeApplication;
@@ -1204,8 +1203,8 @@ export const addExpertRemark = async ({ expertId, id, remarks }) => {
   return application;
 };
 
-export const requestApplicationDocuments = async ({ expertId, retailerId, id, remarks }) => {
-  const assigneeId = expertId || retailerId;
+export const requestApplicationDocuments = async ({ expertId, id, remarks }) => {
+  const assigneeId = expertId;
   const cleanRemarks = typeof remarks === "string" ? remarks.trim() : "";
   if (!cleanRemarks) throw new ApiError(400, "Describe the required documents");
   if (cleanRemarks.length > 1000) {
@@ -1263,14 +1262,13 @@ export const getPartnerApplicationById = async (partnerId, id) => {
     $and: [partnerOwnerFilter(partnerId.trim()), getApplicationIdentifierFilter(id)],
   });
   const safeApplication = { ...application, customerName: getCustomerName(application.formData) };
-  safeApplication.files = application.files.map(({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, secureUrl, mimeType, format, size, required, status, uploadedAt }));
-  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, secureUrl, mimeType, format, size, status, uploadedAt }));
-  safeApplication.completionDocuments = (application.completionDocuments || []).map(({ fieldName, originalName, secureUrl, resourceType, format, size }) => ({ fieldName, originalName, secureUrl, resourceType, format, size }));
+  safeApplication.files = application.files.map(({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt }));
+  safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }));
+  safeApplication.completionDocuments = (application.completionDocuments || []).map(({ fieldName, originalName, format, size }) => ({ fieldName, originalName, format, size }));
   safeApplication.timeline = application.timeline.map(({ status, remarks, createdAt }) => ({ status, remarks, createdAt }));
   delete safeApplication.assignedBy;
   delete safeApplication.assignedExpertId;
   delete safeApplication.assignedPartnerId;
-  delete safeApplication.assignedRetailerId;
   delete safeApplication.customerUserId;
   delete safeApplication.customerId;
   return safeApplication;
@@ -1354,7 +1352,7 @@ export const getAdminApplications = (query) => {
   if (query.status && !status) throw new ApiError(400, "Invalid application status");
   if (status) filter.status = status;
   if (query.customerId) filter.customerId = query.customerId.trim();
-  if (query.retailerId) filter.assignedRetailerId = query.retailerId.trim();
+  if (query.expertId) filter.assignedExpertId = query.expertId.trim();
   if (query.serviceId) {
     if (!mongoose.isValidObjectId(query.serviceId)) throw new ApiError(400, "Invalid serviceId");
     filter.service = query.serviceId;
@@ -1365,12 +1363,3 @@ export const getAdminApplications = (query) => {
   }
   return listApplications(filter, query);
 };
-
-// Deprecated service aliases retained for callers using the retailer-era API.
-export const getRetailerApplications = getExpertApplications;
-export const getRetailerDashboardSummary = getExpertDashboardSummary;
-export const getRetailerApplicationById = getExpertApplicationById;
-export const updateRetailerApplicationStatus = ({ retailerId, ...options }) =>
-  updateExpertApplicationStatus({ ...options, expertId: retailerId });
-export const addRetailerRemark = ({ retailerId, ...options }) =>
-  addExpertRemark({ ...options, expertId: retailerId });

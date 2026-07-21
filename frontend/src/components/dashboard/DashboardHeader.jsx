@@ -6,7 +6,7 @@ const getPageTitle = (pathname) => {
   if (/^\/admin\/applications\/[^/]+$/.test(pathname)) return "Application Details";
   if (pathname === "/admin/applications") return "Applications";
   if (pathname === "/admin/customers") return "Customers";
-  if (pathname === "/admin/experts" || pathname === "/admin/retailers") return "Experts";
+  if (pathname === "/admin/experts") return "Experts";
   if (/^\/admin\/services\/[^/]+\/edit$/.test(pathname)) return "Edit Service";
   if (pathname === "/admin/services/new") return "Create Service";
   if (pathname === "/admin/services") return "Services";
@@ -14,11 +14,11 @@ const getPageTitle = (pathname) => {
   if (pathname === "/admin/notifications") return "Notifications";
   if (pathname === "/admin/settings") return "Settings";
   if (pathname === "/admin/dashboard") return "Admin Dashboard";
-  if (/^\/(expert|retailer)\/applications\/[^/]+$/.test(pathname)) return "Application Details";
-  if (["/expert/applications", "/retailer/applications"].includes(pathname)) return "Assigned Applications";
-  if (["/expert/profile", "/retailer/profile"].includes(pathname)) return "Profile";
-  if (["/expert/notifications", "/retailer/notifications"].includes(pathname)) return "Notifications";
-  if (["/expert/dashboard", "/retailer/dashboard"].includes(pathname)) return "Expert Dashboard";
+  if (/^\/expert\/applications\/[^/]+$/.test(pathname)) return "Application Details";
+  if (pathname === "/expert/applications") return "Assigned Applications";
+  if (pathname === "/expert/profile") return "Profile";
+  if (pathname === "/expert/notifications") return "Notifications";
+  if (pathname === "/expert/dashboard") return "Expert Dashboard";
   if (pathname === "/partner/dashboard") return "Partner Dashboard";
   if (pathname === "/partner/leads") return "Available Leads";
   if (/^\/partner\/leads\/[^/]+$/.test(pathname)) return "Lead Details";

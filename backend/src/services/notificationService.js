@@ -35,9 +35,7 @@ const validateRecipient = (recipientUserId, recipientRole) => {
   }
 };
 
-const recipientRoleFilter = (role) => role === ROLES.EXPERT
-  ? { $in: [ROLES.EXPERT, "retailer"] }
-  : role;
+const recipientRoleFilter = (role) => role;
 
 export const createNotification = async ({
   recipientUserId,

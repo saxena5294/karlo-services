@@ -1,6 +1,6 @@
 const commonFields = (form) => [
   { name: "applicantName", label: "Applicant Name", labelHindi: "आवेदक का नाम", type: "text", required: true, minLength: 2, maxLength: 120, section: "basic", order: -30, helpText: "Enter your name as shown on your documents." },
-  { name: "mobileNumber", label: "Mobile Number", labelHindi: "मोबाइल नंबर", type: "tel", required: true, minLength: 10, maxLength: 10, section: "basic", order: -20, helpText: "Enter a 10-digit Indian mobile number and verify it using OTP." },
+  { name: "mobileNumber", label: "Mobile Number", labelHindi: "मोबाइल नंबर", type: "tel", required: true, minLength: 10, maxLength: 10, section: "basic", order: -20, helpText: "Enter a 10-digit Indian mobile number starting with 6, 7, 8, or 9." },
   { name: "email", label: "Email Address", labelHindi: "ईमेल पता", type: "email", required: Boolean(form.requireEmail), maxLength: 254, section: "basic", order: -10, helpText: form.requireEmail ? "Email is required for this service." : "Optional / वैकल्पिक" },
 ];
 

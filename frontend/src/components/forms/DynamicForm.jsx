@@ -14,7 +14,6 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { sendMobileOtp, verifyMobileOtp } from "../../api/serviceApi";
 import CaptchaChallenge from "../security/CaptchaChallenge";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -90,17 +89,7 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
   const [extraErrors, setExtraErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
-  const [otpRequestError, setOtpRequestError] = useState("");
-  const [otpState, setOtpState] = useState({ sent: false, verified: false, token: "", developmentOtp: "" });
-  const [otp, setOtp] = useState("");
-  const [countdown, setCountdown] = useState(0);
   const [captchaToken, setCaptchaToken] = useState("");
-
-  useEffect(() => {
-    if (!countdown) return undefined;
-    const timer = setInterval(() => setCountdown((value) => Math.max(value - 1, 0)), 1000);
-    return () => clearInterval(timer);
-  }, [countdown]);
 
   const visibleFields = useMemo(() => fields.filter((field) => conditionMatches(field.conditional, values)), [fields, values]);
   const applicantFields = visibleFields.filter(({ name }) => ["applicantName", "mobileNumber", "email"].includes(name));
@@ -112,7 +101,7 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     const value = values[field.name];
     if (field.required && isMissing(value)) return `${field.label} is required.`;
     if (field.name === "applicantName" && value && String(value).trim().length < 2) return "Enter the applicant's full name.";
-    if (field.name === "mobileNumber" && value && !/^[6-9]\d{9}$/.test(value)) return "Enter a valid 10-digit Indian mobile number.";
+    if (field.name === "mobileNumber" && value && !/^[6-9]\d{9}$/.test(value)) return "Mobile number must contain exactly 10 digits, use numbers only, and start with 6, 7, 8, or 9.";
     if (field.type === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Enter a valid email address.";
     if (field.minLength && value && String(value).trim().length < field.minLength) return `${field.label} must contain at least ${field.minLength} characters.`;
     if (field.maxLength && value && String(value).length > field.maxLength) return `${field.label} must contain no more than ${field.maxLength} characters.`;
@@ -129,11 +118,6 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
 
   const setValue = (name, value) => {
     setValues((current) => ({ ...current, [name]: value }));
-    if (name === "mobileNumber") {
-      setOtpState({ sent: false, verified: false, token: "", developmentOtp: "" });
-      setOtp("");
-      setOtpRequestError("");
-    }
   };
 
   const setFieldFiles = (field, selected) => {
@@ -150,32 +134,6 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     setTouched((current) => ({ ...current, [field.name]: true }));
     setFileErrors((current) => ({ ...current, [field.name]: "" }));
     setFiles((current) => ({ ...current, [field.name]: (current[field.name] || []).filter((_, itemIndex) => itemIndex !== index) }));
-  };
-
-  const sendOtp = async () => {
-    setTouched((current) => ({ ...current, mobileNumber: true }));
-    const mobileField = applicantFields.find(({ name }) => name === "mobileNumber");
-    if (!mobileField || fieldMessage(mobileField)) return;
-    setOtpRequestError("");
-    try {
-      const result = await sendMobileOtp(values.mobileNumber);
-      setOtpState({ sent: true, verified: false, token: "", developmentOtp: result.developmentOtp || "" });
-      setCountdown(result.resendAfterSeconds || 60);
-    } catch (requestError) {
-      setOtpRequestError(requestError.response?.data?.message || "Unable to send OTP. Please try again.");
-    }
-  };
-
-  const verifyOtp = async () => {
-    setTouched((current) => ({ ...current, otp: true }));
-    if (otp.length !== 6) return;
-    setOtpRequestError("");
-    try {
-      const result = await verifyMobileOtp(values.mobileNumber, otp);
-      setOtpState({ sent: true, verified: true, token: result.mobileVerificationToken, developmentOtp: "" });
-    } catch (requestError) {
-      setOtpRequestError(requestError.response?.data?.message || "The OTP is incorrect or expired.");
-    }
   };
 
   const addExtra = () => {
@@ -206,7 +164,7 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     });
     setExtraErrors(nextExtraErrors);
     const extrasInvalid = Object.values(nextExtraErrors).some(({ label, file }) => label || file);
-    return !fieldErrors && !documentErrors && !extrasInvalid && otpState.verified && values.termsAccepted === true && Boolean(captchaToken);
+    return !fieldErrors && !documentErrors && !extrasInvalid && values.termsAccepted === true && Boolean(captchaToken);
   };
 
   const submit = (event) => {
@@ -239,7 +197,6 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     payload.append("additionalDocumentLabels", JSON.stringify(labels));
     payload.append("additionalDetails", values.additionalDetails || "");
     payload.append("termsAccepted", "true");
-    payload.append("mobileVerificationToken", otpState.token);
     payload.append("captchaToken", captchaToken);
     if (variant?.key) payload.append("variantKey", variant.key);
     onSubmit(payload);
@@ -277,16 +234,14 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     );
   };
 
-  const otpError = (touched.otp || submitted) && !otpState.verified ? (otpState.sent && otp.length !== 6 ? "Enter the 6-digit OTP." : "Mobile OTP verification is required.") : "";
-
   return (
     <form ref={formRef} onSubmit={submit} noValidate className="space-y-6">
       <SectionCard icon={Info} title="Service Information" description="Please confirm the service before filling the application.">
         <div className="rounded-xl bg-blue-50 p-4"><p className="text-sm font-semibold uppercase tracking-wide text-blue-700">Service Name</p><p className="mt-1 text-xl font-bold text-slate-900">{service.title}{variant ? ` - ${variant.title}` : ""}</p>{(form.description || variant?.description || service.description) && <p className="mt-2 leading-6 text-slate-600">{form.description || variant?.description || service.description}</p>}</div>
       </SectionCard>
 
-      <SectionCard icon={UserRound} title="Applicant Details" description="Enter the applicant's name and verify the mobile number.">
-        {applicantFields.map((field) => <div key={field.name}>{renderField(field)}{field.name === "mobileNumber" && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">{!otpState.verified && <button type="button" disabled={!/^[6-9]\d{9}$/.test(values.mobileNumber || "") || countdown > 0} onClick={sendOtp} className="min-h-12 rounded-xl bg-blue-700 px-5 py-3 font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{otpState.sent ? countdown ? `Resend OTP in ${countdown}s` : "Resend OTP" : "Send OTP"}</button>}{otpState.sent && !otpState.verified && <><input aria-label="Enter six digit OTP" inputMode="numeric" maxLength="6" value={otp} onChange={(event) => { setOtp(event.target.value.replace(/\D/g, "").slice(0, 6)); setOtpRequestError(""); }} onBlur={() => setTouched((current) => ({ ...current, otp: true }))} placeholder="6-digit OTP" aria-invalid={Boolean(otpError || otpRequestError)} className={`${inputClass} mt-0 sm:w-44 ${otpError || otpRequestError ? invalidInputClass : ""}`} /><button type="button" onClick={verifyOtp} disabled={otp.length !== 6} className="min-h-12 rounded-xl border-2 border-blue-700 px-5 py-3 font-bold text-blue-700 disabled:opacity-40">Verify OTP</button></>}{otpState.verified && <span className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-emerald-50 px-4 font-bold text-emerald-700"><CheckCircle2 /> Mobile verified</span>}</div>{otpState.developmentOtp && <p className="mt-3 text-xs font-medium text-amber-700">Development OTP: {otpState.developmentOtp}. It is never returned in production.</p>}<FieldError message={otpRequestError || otpError} /></div>}</div>)}
+      <SectionCard icon={UserRound} title="Applicant Details" description="Enter the applicant's contact details.">
+        {applicantFields.map((field) => <div key={field.name}>{renderField(field)}{field.name === "mobileNumber" && <p className="mt-2 text-sm leading-6 text-slate-600">Please enter an active mobile number. Application updates and support communication may be sent to this number.</p>}</div>)}
       </SectionCard>
 
       {serviceFields.length > 0 && <SectionCard icon={ClipboardList} title="Service Details" description="Only information required for this service is shown.">{serviceFields.map((field) => <div key={field.name}>{renderField(field)}</div>)}</SectionCard>}

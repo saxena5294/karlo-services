@@ -10,7 +10,7 @@ const DashboardLayout = () => {
     ? "admin"
     : pathname.startsWith("/partner")
       ? "partner"
-    : pathname.startsWith("/expert") || pathname.startsWith("/retailer")
+    : pathname.startsWith("/expert")
       ? "expert"
       : "customer";
 

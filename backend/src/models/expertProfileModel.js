@@ -17,8 +17,7 @@ const expertProfileSchema = new mongoose.Schema(
     },
     createdBy: { type: String, required: true, trim: true },
   },
-  // Keep the collection name so existing internal-team profiles remain valid.
-  { timestamps: true, collection: "retailerprofiles" }
+  { timestamps: true, collection: "expertprofiles" }
 );
 
 export const ExpertProfile =

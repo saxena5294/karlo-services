@@ -77,7 +77,7 @@ export const replaceCmsImage = async ({ file, folder, oldImage, update }) => {
   if (!hasAllowedFileSignature(file)) throw new ApiError(400, "Image content is not a valid JPG, PNG, or WEBP file");
   let uploaded;
   try {
-    uploaded = await uploadBuffer(file, "cms", folder);
+    uploaded = await uploadBuffer(file, "cms", folder, { deliveryType: "upload" });
     const image = { url: uploaded.secure_url, publicId: uploaded.public_id };
     const document = await update(image);
     if (!document) throw new ApiError(404, "CMS record not found");

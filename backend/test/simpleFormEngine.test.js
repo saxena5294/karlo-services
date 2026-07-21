@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Application } from "../src/models/applicationModel.js";
 import { ServiceForm } from "../src/models/serviceFormModel.js";
+import { MobileOtp } from "../src/models/mobileOtpModel.js";
 import { conditionalMatches, getEffectiveFields } from "../src/services/formConfigurationService.js";
 import { normalizeIndianMobile } from "../src/services/mobileVerificationService.js";
 import { hasAllowedFileSignature, validateSubmission } from "../src/services/applicationService.js";
@@ -30,15 +31,35 @@ test("file signatures recognize JPG, PNG and PDF content", () => {
   assert.equal(hasAllowedFileSignature({ mimetype: "application/pdf", buffer: Buffer.from("%PDF-1.7") }), true);
 });
 
-test("submission validation requires verified-flow basics, declaration and at most six extras", () => {
+test("submission validation requires basic details, declaration and at most six extras", () => {
   const form = { requireEmail: false, maxAdditionalDocuments: 6, fields: [{ name: "proof", label: "Proof", type: "file", required: false, options: [], maxFileSizeMb: 10, maxFiles: 1 }] };
   const validBody = { applicantName: "राम कुमार", mobileNumber: "9876543210", termsAccepted: "true" };
   const extraFiles = Array.from({ length: 7 }, (_, index) => ({ fieldname: `additionalDocument__${index}`, originalname: "proof.pdf", mimetype: "application/pdf", size: 8, buffer: Buffer.from("%PDF-1.7") }));
   assert.ok(validateSubmission(form, validBody, extraFiles).some((message) => message.includes("maximum of 6")));
 });
 
+test("submission validation accepts only 10-digit Indian mobile numbers", () => {
+  const form = { requireEmail: false, fields: [] };
+  const validBody = { applicantName: "Ram Kumar", mobileNumber: "9876543210", termsAccepted: "true" };
+
+  assert.deepEqual(validateSubmission(form, validBody, []), []);
+  for (const mobileNumber of ["987654321", "98765432101", "5876543210", "98765abc10", "+919876543210"]) {
+    assert.ok(
+      validateSubmission(form, { ...validBody, mobileNumber }, []).some((message) => message.includes("exactly 10 digits")),
+      `${mobileNumber} should be rejected`
+    );
+  }
+});
+
 test("application schema stores labeled and additional document metadata with idempotency", () => {
   assert.ok(Application.schema.path("additionalDocuments"));
   assert.ok(Application.schema.indexes().some(([fields]) => fields.customerUserId === 1 && fields.submissionKey === 1));
   assert.ok(ServiceForm.schema.path("fields").schema.path("maxFiles"));
+  assert.equal(Application.schema.path("mobileVerified").defaultValue, false);
+});
+
+test("mobile verification records persist one-time token consumption state", () => {
+  assert.ok(MobileOtp.schema.path("verificationTokenHash"));
+  assert.ok(MobileOtp.schema.path("verificationExpiresAt"));
+  assert.ok(MobileOtp.schema.path("consumedAt"));
 });

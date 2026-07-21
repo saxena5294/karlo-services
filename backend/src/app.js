@@ -1,9 +1,10 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import healthRoutes from "./routes/healthRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import applicationRoutes from "./routes/applicationRoutes.js";
 import customerRoutes from "./routes/customerRoutes.js";
-import retailerRoutes from "./routes/retailerRoutes.js";
 import expertRoutes from "./routes/expertRoutes.js";
 import partnerRoutes from "./routes/partnerRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
@@ -19,6 +20,8 @@ import {
 } from "./middlewares/errorMiddleware.js";
 
 const app = express();
+app.disable("x-powered-by");
+app.use(helmet());
 
 app.use(
   cors({
@@ -30,12 +33,12 @@ app.use(
   }),
 );
 
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+app.use("/api/health", healthRoutes);
 
 app.use("/api/services", serviceRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/customer", customerRoutes);
-app.use("/api/retailer", retailerRoutes);
 app.use("/api/expert", expertRoutes);
 app.use("/api/partner", partnerRoutes);
 app.use("/api/notifications", notificationRoutes);
