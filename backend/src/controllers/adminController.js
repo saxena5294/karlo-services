@@ -1,6 +1,6 @@
 import * as adminService from "../services/adminService.js";
 import { ApiError } from "../utils/ApiError.js";
-import { listPartnerProfilesForAdmin, publishApplicationLead, updatePartnerVerification } from "../services/partnerMarketplaceService.js";
+import { createPartnerProfileByAdmin, listPartnerProfilesForAdmin, publishApplicationLead, updatePartnerVerification } from "../services/partnerMarketplaceService.js";
 import * as controlService from "../services/adminControlService.js";
 import { listAuditLogs, writeAuditLog } from "../services/auditService.js";
 
@@ -31,6 +31,7 @@ export const verifyPartner = send(async (req) => { validateBody(req, ["verificat
 export const listCustomers = send(async (req) => adminService.getAdminCustomers(req.query));
 export const listExperts = send(async (req) => adminService.getAdminExperts(req.query));
 export const createExpert = send(async (req) => { const expert = await adminService.createExpertProfile(req.body, req.auth.userId); await writeAuditLog({ req, action: "expert.create", entityType: "expert", entityId: expert._id, summary: `Created expert ${expert.displayName}`, after: expert }); return { expert }; }, 201);
+export const createPartner = send(async (req) => { const partner = await createPartnerProfileByAdmin(req.body); await writeAuditLog({ req, action: "partner.create", entityType: "partner", entityId: partner._id, summary: `Created partner ${partner.businessName}`, after: partner }); return { partner }; }, 201);
 export const updateExpert = send(async (req) => { const expert = await adminService.updateExpertProfile(req.params.id, req.body); await writeAuditLog({ req, action: "expert.update", entityType: "expert", entityId: expert._id, summary: `Updated expert ${expert.displayName}`, after: expert }); return { expert }; });
 export const listServices = send(async (req) => adminService.getAdminServices(req.query));
 export const createService = send(async (req) => { const service = await adminService.createAdminService(req.body); await writeAuditLog({ req, action: "service.create", entityType: "service", entityId: service._id, summary: `Created service ${service.title}`, after: service }); return { service }; }, 201);

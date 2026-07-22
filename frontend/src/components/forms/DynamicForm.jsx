@@ -14,6 +14,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { appendSelectedVariant } from "../../utils/applicationPayload";
 import CaptchaChallenge from "../security/CaptchaChallenge";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -198,7 +199,7 @@ const DynamicForm = ({ form, service, variant = null, isSubmitting, onSubmit }) 
     payload.append("additionalDetails", values.additionalDetails || "");
     payload.append("termsAccepted", "true");
     payload.append("captchaToken", captchaToken);
-    if (variant?.key) payload.append("variantKey", variant.key);
+    appendSelectedVariant(payload, variant);
     onSubmit(payload);
   };
 

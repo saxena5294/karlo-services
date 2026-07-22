@@ -19,3 +19,4 @@ export const uploadCompletionDocuments = (id, files) => {
 };
 export const getPartnerProfile = () => data(API.get("/partner/profile"));
 export const updatePartnerProfile = (payload) => data(API.patch("/partner/profile", payload));
+export const registerPartner = (payload) => data(API.post("/partner/register", payload));

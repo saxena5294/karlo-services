@@ -83,13 +83,40 @@ export const getPartnerProfile = async (partnerId) => {
     .populate("servicesOffered", "title slug category")
     .lean();
   if (!profile) throw new ApiError(404, "Partner profile not found");
-  return profile;
+  const assignedWorkCount = await Application.countDocuments({ assignmentType: ASSIGNMENT_TYPES.PARTNER, assignedPartnerId: partnerId.trim() });
+  return { ...profile, role: ROLES.PARTNER, isOnline: Boolean(profile.availability && profile.isActive && profile.verificationStatus === "approved"), assignedWorkCount };
 };
 
 const EDITABLE_PROFILE_FIELDS = [
   "businessName", "ownerName", "mobile", "email", "address", "city", "state", "pincode",
   "gstNumber", "businessType", "servicesOffered", "serviceCategories", "serviceAreas", "availability",
 ];
+
+const CREATE_PROFILE_FIELDS = EDITABLE_PROFILE_FIELDS.filter((field) => field !== "availability");
+const createProfilePayload = (userId, payload, verificationStatus) => {
+  const unexpected = Object.keys(payload).filter((key) => !["userId", ...CREATE_PROFILE_FIELDS].includes(key));
+  if (unexpected.length) throw new ApiError(400, `Unsupported partner fields: ${unexpected.join(", ")}`);
+  const resolvedUserId = String(userId || payload.userId || "").trim();
+  if (!resolvedUserId) throw new ApiError(400, "Partner userId is required");
+  return {
+    userId: resolvedUserId,
+    ...Object.fromEntries(CREATE_PROFILE_FIELDS.filter((field) => field in payload).map((field) => [field, payload[field]])),
+    verificationStatus,
+    isActive: true,
+    availability: true,
+  };
+};
+
+export const registerPartnerProfile = async (partnerId, payload) => {
+  if (await PartnerProfile.exists({ userId: partnerId.trim() })) throw new ApiError(409, "Partner profile already exists");
+  return PartnerProfile.create(createProfilePayload(partnerId, payload, "pending"));
+};
+
+export const createPartnerProfileByAdmin = async (payload) => {
+  const data = createProfilePayload(payload.userId, payload, "approved");
+  if (await PartnerProfile.exists({ userId: data.userId })) throw new ApiError(409, "Partner profile already exists");
+  return PartnerProfile.create(data);
+};
 
 export const updatePartnerProfile = async (partnerId, payload) => {
   const unexpected = Object.keys(payload).filter((key) => !EDITABLE_PROFILE_FIELDS.includes(key));

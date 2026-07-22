@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
 import PublicLayout from "./components/layout/PublicLayout";
+import { dashboardFeatures } from "./config/dashboardFeatures";
 
 const page = (loader) => lazy(loader);
 const namedPage = (loader, name) => lazy(async () => ({ default: (await loader())[name] }));
@@ -55,6 +56,8 @@ const RefundPolicy = page(() => import("./pages/public/RefundPolicy"));
 const PartnerDashboard = page(() => import("./pages/partner/PartnerDashboard"));
 const PartnerLeadDetails = page(() => import("./pages/partner/PartnerLeadDetails"));
 const PartnerApplicationDetails = page(() => import("./pages/partner/PartnerApplicationDetails"));
+const PartnerApplications = page(() => import("./pages/partner/PartnerApplications"));
+const PartnerRegistration = page(() => import("./pages/partner/PartnerRegistration"));
 const PartnerWallet = page(() => import("./pages/partner/PartnerWallet"));
 const PartnerProfile = page(() => import("./pages/partner/PartnerProfile"));
 
@@ -107,10 +110,14 @@ const AppRoutes = () => (
     <Route path="/partner" element={<DashboardLayout />}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<PartnerDashboard />} />
-      <Route path="leads" element={<ComingSoonPage title="Available Leads" description="This partner feature will be available soon." />} />
-      <Route path="leads/:id" element={<PartnerLeadDetails />} />
-      <Route path="accepted-leads" element={<ComingSoonPage title="Accepted Leads" description="This partner feature will be available soon." />} />
-      <Route path="completed-leads" element={<ComingSoonPage title="Accepted Work" description="This partner feature will be available soon." />} />
+      <Route path="register" element={<PartnerRegistration />} />
+      {dashboardFeatures.leadMarketplace && <>
+        <Route path="leads" element={<ComingSoonPage title="Available Leads" description="This partner feature will be available soon." />} />
+        <Route path="leads/:id" element={<PartnerLeadDetails />} />
+        <Route path="accepted-leads" element={<ComingSoonPage title="Accepted Leads" description="This partner feature will be available soon." />} />
+        <Route path="completed-leads" element={<ComingSoonPage title="Accepted Work" description="This partner feature will be available soon." />} />
+      </>}
+      <Route path="applications" element={<PartnerApplications />} />
       <Route path="applications/:id" element={<PartnerApplicationDetails />} />
       <Route path="services" element={<DashboardServices />} />
       <Route path="form-history" element={<FormHistory portal="partner" />} />
@@ -137,8 +144,10 @@ const AppRoutes = () => (
       <Route path="experts" element={<AdminExperts />} />
       <Route path="partners" element={<AdminPartners />} />
       <Route path="partners/:id" element={<AdminPartnerDetails />} />
-      <Route path="leads" element={<AdminLeads />} />
-      <Route path="leads/:id" element={<AdminLeadDetails />} />
+      {dashboardFeatures.leadMarketplace && <>
+        <Route path="leads" element={<AdminLeads />} />
+        <Route path="leads/:id" element={<AdminLeadDetails />} />
+      </>}
       <Route path="services" element={<AdminServices />} />
       <Route path="services/new" element={<AdminServiceForm />} />
       <Route path="services/:id/edit" element={<AdminServiceForm />} />

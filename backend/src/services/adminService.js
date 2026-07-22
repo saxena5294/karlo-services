@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { APPLICATION_STATUS_VALUES } from "../constants/applicationConstants.js";
+import { APPLICATION_STATUSES, APPLICATION_STATUS_VALUES } from "../constants/applicationConstants.js";
 import { Application } from "../models/applicationModel.js";
 import { ApplicationAssignment } from "../models/applicationAssignmentModel.js";
 import { ApplicationNote } from "../models/applicationNoteModel.js";
@@ -376,7 +376,7 @@ export const getAdminReports = async () => {
 
 export const getAdminDashboardSummary = async () => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [reports, activeServices, customers, experts, recent, activity, todayApplications, unassigned, expertAssigned, partnerAssigned, openLeads, acceptedLeads, pendingPartners, activePartners] = await Promise.all([
+  const [reports, activeServices, customers, experts, recent, activity, todayApplications, unassigned, expertAssigned, partnerAssigned, awaitingAdminReview, pendingDocumentRequests, pendingPartners, activePartners, activeExperts] = await Promise.all([
     getAdminReports(),
     Service.countDocuments({ isActive: true }),
     Application.aggregate([
@@ -390,10 +390,11 @@ export const getAdminDashboardSummary = async () => {
     Application.countDocuments({ assignmentType: "none", status: { $nin: TERMINAL_STATUSES } }),
     Application.countDocuments({ assignmentType: "expert", status: { $nin: TERMINAL_STATUSES } }),
     Application.countDocuments({ assignmentType: "partner", status: { $nin: TERMINAL_STATUSES } }),
-    Lead.countDocuments({ status: "open", expiresAt: { $gt: new Date() } }),
-    Lead.countDocuments({ status: "accepted" }),
+    Application.countDocuments({ status: APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW }),
+    Application.countDocuments({ status: APPLICATION_STATUSES.DOCUMENTS_REQUIRED }),
     PartnerProfile.countDocuments({ verificationStatus: { $in: ["pending", "under_review"] } }),
     PartnerProfile.countDocuments({ verificationStatus: "approved", isActive: true }),
+    ExpertProfile.countDocuments({ status: "active", availability: true }),
   ]);
   const statusMap = Object.fromEntries(reports.byStatus.map((item) => [item._id, item.count]));
   return {
@@ -412,9 +413,10 @@ export const getAdminDashboardSummary = async () => {
       activeServices,
       totalCustomers: customers.length,
       totalExperts: experts,
-      activeExperts: await ExpertProfile.countDocuments({ status: "active", availability: true }),
-      openLeads,
-      acceptedLeads,
+      activeExperts,
+      assignedApplications: expertAssigned + partnerAssigned,
+      awaitingAdminReview,
+      pendingDocumentRequests,
       pendingPartnerApprovals: pendingPartners,
       activePartners,
     },

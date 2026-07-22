@@ -5,11 +5,25 @@ import {
   getExpertDashboardSummary as getExpertDashboardSummaryService,
   requestApplicationDocuments as requestApplicationDocumentsService,
   updateExpertApplicationStatus as updateExpertApplicationStatusService,
+  getExpertProfile as getExpertProfileService,
+  uploadExpertCompletionDocuments,
 } from "../services/applicationService.js";
 
 export const getExpertDashboardSummary = async (req, res, next) => {
   try {
     return res.status(200).json({ success: true, ...(await getExpertDashboardSummaryService(req.auth.userId)) });
+  } catch (error) { return next(error); }
+};
+
+export const getExpertProfile = async (req, res, next) => {
+  try { return res.status(200).json({ success: true, profile: await getExpertProfileService(req.auth.userId) }); }
+  catch (error) { return next(error); }
+};
+
+export const uploadCompletionDocuments = async (req, res, next) => {
+  try {
+    const documents = await uploadExpertCompletionDocuments({ expertId: req.auth.userId, id: req.params.id, files: req.files || [] });
+    return res.status(201).json({ success: true, documents });
   } catch (error) { return next(error); }
 };
 
@@ -46,4 +60,3 @@ export const requestApplicationDocuments = async (req, res, next) => {
     return res.status(200).json({ success: true, message: "Document request added successfully", application });
   } catch (error) { return next(error); }
 };
-

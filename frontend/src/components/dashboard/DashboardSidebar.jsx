@@ -43,6 +43,7 @@ const expertNavigation = [
 
 const partnerNavigation = [
   { name: "Dashboard", path: "/partner/dashboard", icon: LayoutDashboard },
+  { name: "Assigned Applications", path: "/partner/applications", icon: FileText },
   { name: "Services", path: "/partner/services", icon: Wrench },
   { name: "Form History", path: "/partner/form-history", icon: ClipboardList },
   { name: "Software", path: "/partner/software", icon: Wrench, disabled: !dashboardFeatures.softwareDownloads },
@@ -54,9 +55,11 @@ const partnerNavigation = [
   { name: "Help & Tickets", path: "/partner/help", icon: Search },
   { name: "Notifications", path: "/partner/notifications", icon: Bell },
   { name: "Profile", path: "/partner/profile", icon: UserRound },
-  { name: "Available Leads", path: "/partner/leads", icon: Store, disabled: !dashboardFeatures.availableLeads },
-  { name: "Accepted Leads", path: "/partner/accepted-leads", icon: FileText, disabled: !dashboardFeatures.acceptedLeads },
-  { name: "Accepted Work", path: "/partner/completed-leads", icon: ListChecks, disabled: !dashboardFeatures.acceptedWork },
+  ...(dashboardFeatures.leadMarketplace ? [
+    { name: "Available Leads", path: "/partner/leads", icon: Store },
+    { name: "Accepted Leads", path: "/partner/accepted-leads", icon: FileText },
+    { name: "Accepted Work", path: "/partner/completed-leads", icon: ListChecks },
+  ] : []),
 ];
 
 const adminNavigation = [
@@ -66,7 +69,7 @@ const adminNavigation = [
   { name: "Customers", path: "/admin/customers", icon: Users },
   { name: "Experts", path: "/admin/experts", icon: Store },
   { name: "Partners", path: "/admin/partners", icon: Users },
-  { name: "Leads", path: "/admin/leads", icon: ListChecks },
+  ...(dashboardFeatures.leadMarketplace ? [{ name: "Leads", path: "/admin/leads", icon: ListChecks }] : []),
   { name: "Services", path: "/admin/services", icon: Wrench },
   { name: "Reports", path: "/admin/reports", icon: BarChart3 },
   { name: "Notifications", path: "/admin/notifications", icon: Bell },

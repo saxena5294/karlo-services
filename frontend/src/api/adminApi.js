@@ -16,6 +16,7 @@ export const getAdminExperts = (params = {}) => getData(API.get("/admin/experts"
 export const createExpert = (data) => getData(API.post("/admin/experts", data));
 export const updateExpert = (id, data) => getData(API.patch(`/admin/experts/${encodeURIComponent(id)}`, data));
 export const getAdminPartners = (params = {}) => getData(API.get("/admin/partners", { params }));
+export const createPartner = (data) => getData(API.post("/admin/partners", data));
 export const getAdminPartner = (id) => getData(API.get(`/admin/partners/${encodeURIComponent(id)}`));
 export const updateAdminPartner = (id, data) => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}`, data));
 export const updatePartnerVerification = (id, verificationStatus) => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}/verification`, { verificationStatus }));

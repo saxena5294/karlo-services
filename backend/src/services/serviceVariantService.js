@@ -24,15 +24,44 @@ export const resolveVariant = (service, requestedKey, requestedSlug = "") => {
   return variants.length === 1 ? variants[0] : null;
 };
 
+const variantError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+export const normalizeVariantKey = (value) => {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw variantError("The selected service variant is invalid.");
+  const key = value.trim().toLowerCase();
+  if (!key) throw variantError("A service variant is required.");
+  return key;
+};
+
 export const assertVariantAvailable = (service, variantKey, legacySlug = "") => {
-  if (!(service?.variants || []).length) return null;
-  const variant = resolveVariant(service, variantKey, legacySlug);
-  if (!variant) {
-    const error = new Error(variantKey ? "Selected service type was not found" : "Choose a service type before continuing");
-    error.statusCode = 400; throw error;
+  const key = normalizeVariantKey(variantKey);
+  const variants = service?.variants || [];
+  if (!variants.length) {
+    if (key) throw variantError("This service does not support variants.");
+    return null;
   }
-  if (variant.isActive === false) { const error = new Error("Selected service type is inactive"); error.statusCode = 400; throw error; }
-  if ((variant.availabilityStatus || "available") !== "available") { const error = new Error(variant.availabilityMessage || "Selected service type is not currently available"); error.statusCode = 400; throw error; }
+
+  const requestedSlug = String(legacySlug || "").trim().toLowerCase();
+  const legacyVariantSlug = !key && requestedSlug && requestedSlug !== service.slug
+    ? requestedSlug
+    : null;
+  if (!key && !legacyVariantSlug) throw variantError("A service variant is required.");
+
+  const selectedValue = key || legacyVariantSlug;
+  const variant = variants.find((item) =>
+    item.key === selectedValue ||
+    item.slug === selectedValue ||
+    (item.legacySlugs || []).includes(selectedValue));
+  if (!variant) throw variantError("The selected service variant is invalid.");
+  if (variant.isActive === false) throw variantError("The selected service variant is inactive.");
+  if ((variant.availabilityStatus || "available") !== "available") {
+    throw variantError(variant.availabilityMessage || "The selected service variant is currently unavailable.");
+  }
   return variant;
 };
 

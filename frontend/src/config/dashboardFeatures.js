@@ -1,3 +1,5 @@
+const leadMarketplaceEnabled = String(import.meta.env.VITE_LEAD_MARKETPLACE_ENABLED || "").toLowerCase() === "true";
+
 export const dashboardFeatures = Object.freeze({
   softwareDownloads: true,
   declarationForms: true,
@@ -10,9 +12,10 @@ export const dashboardFeatures = Object.freeze({
   rewards: true,
   whatsappSupport: true,
   ratings: false,
-  availableLeads: false,
-  acceptedLeads: false,
-  acceptedWork: false,
+  leadMarketplace: leadMarketplaceEnabled,
+  availableLeads: leadMarketplaceEnabled,
+  acceptedLeads: leadMarketplaceEnabled,
+  acceptedWork: leadMarketplaceEnabled,
 });
 
 export const isDashboardFeatureEnabled = (feature) => dashboardFeatures[feature] === true;

@@ -17,6 +17,7 @@ import { Application } from "../models/applicationModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
 import { ApplicationAssignment } from "../models/applicationAssignmentModel.js";
 import { ExpertProfile } from "../models/expertProfileModel.js";
+import { PartnerProfile } from "../models/partnerProfileModel.js";
 import { Service } from "../models/serviceModel.js";
 import { ServiceForm } from "../models/serviceFormModel.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -28,15 +29,14 @@ import { conditionalMatches, getEffectiveFields } from "./formConfigurationServi
 import { assertServiceCanAcceptApplications } from "./serviceAvailabilityService.js";
 import { verifyCaptcha } from "./captchaService.js";
 import { assertVariantAvailable, findServiceBySlugOrLegacy, variantForm } from "./serviceVariantService.js";
+import { isLeadMarketplaceEnabled } from "../config/features.js";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
-const ASSIGNEE_STATUS_VALUES = new Set([
+export const ASSIGNEE_STATUS_VALUES = new Set([
   APPLICATION_STATUSES.DOCUMENTS_REQUIRED,
   APPLICATION_STATUSES.PROCESSING,
-  APPLICATION_STATUSES.APPROVED,
-  APPLICATION_STATUSES.COMPLETED,
-  APPLICATION_STATUSES.REJECTED,
+  APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW,
 ]);
 
 const createApplicationNumber = () =>
@@ -135,7 +135,15 @@ export const hasAllowedFileSignature = (file) => {
 export const validateSubmission = (form, body, files) => {
   const errors = [];
   const fields = getEffectiveFields(form);
-  const allowedFields = new Set([...fields.map(({ name }) => name), "mobileVerificationToken", "captchaToken", "additionalDetails", "termsAccepted", "additionalDocumentLabels"]);
+  const allowedFields = new Set([
+    ...fields.map(({ name }) => name),
+    "variantKey",
+    "mobileVerificationToken",
+    "captchaToken",
+    "additionalDetails",
+    "termsAccepted",
+    "additionalDocumentLabels",
+  ]);
   const filesByField = files.reduce((groups, file) => {
     groups[file.fieldname] = [...(groups[file.fieldname] || []), file];
     return groups;
@@ -766,9 +774,19 @@ export const assignApplication = async ({
   }
 
   let expert = null;
+  let partner = null;
   if (normalizedType === ASSIGNMENT_TYPES.EXPERT) {
     expert = await ExpertProfile.findOne({ userId: expertId, status: "active" });
     if (!expert) throw new ApiError(400, "Select a valid active expert");
+  }
+  if (normalizedType === ASSIGNMENT_TYPES.PARTNER) {
+    partner = await PartnerProfile.findOne({
+      userId: partnerId,
+      verificationStatus: "approved",
+      isActive: true,
+      availability: true,
+    });
+    if (!partner) throw new ApiError(400, "Select a valid approved and available partner");
   }
   const cleanRemarks = sanitizeNotificationText(remarks, 1000);
 
@@ -780,10 +798,10 @@ export const assignApplication = async ({
       throw new ApiError(409, `A ${currentStatus} application cannot be assigned`);
     }
     const fulfillmentType = application.fulfillmentType || FULFILLMENT_TYPES.INTERNAL;
-    if (normalizedType === ASSIGNMENT_TYPES.EXPERT && fulfillmentType === FULFILLMENT_TYPES.PARTNER) {
+    if (isLeadMarketplaceEnabled() && normalizedType === ASSIGNMENT_TYPES.EXPERT && fulfillmentType === FULFILLMENT_TYPES.PARTNER) {
       throw new ApiError(409, "A partner-fulfilled service cannot be assigned to an expert");
     }
-    if (normalizedType === ASSIGNMENT_TYPES.PARTNER && fulfillmentType === FULFILLMENT_TYPES.INTERNAL) {
+    if (isLeadMarketplaceEnabled() && normalizedType === ASSIGNMENT_TYPES.PARTNER && fulfillmentType === FULFILLMENT_TYPES.INTERNAL) {
       throw new ApiError(409, "An internally fulfilled service cannot be assigned to a partner");
     }
     const currentType = application.assignmentType || (getAssignedExpertId(application) ? ASSIGNMENT_TYPES.EXPERT : null);
@@ -812,7 +830,7 @@ export const assignApplication = async ({
     const assigneeLabel = normalizedType === ASSIGNMENT_TYPES.EXPERT
       ? `expert ${expert.displayName}`
       : normalizedType === ASSIGNMENT_TYPES.PARTNER
-        ? `partner ${partnerId}`
+        ? `partner ${partner.businessName}`
         : "nobody";
     await ApplicationTimeline.create(
       [{ application: application._id, status: application.status, remarks: cleanRemarks || `Assigned to ${assigneeLabel}`, updatedBy }],
@@ -1083,6 +1101,12 @@ export const getExpertDashboardSummary = async (expertId) => {
           documentsRequired: {
             $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.DOCUMENTS_REQUIRED] }, 1, 0] },
           },
+          awaitingAdminReview: {
+            $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW] }, 1, 0] },
+          },
+          completed: {
+            $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.COMPLETED] }, 1, 0] },
+          },
         },
       },
       { $project: { _id: 0 } },
@@ -1110,12 +1134,86 @@ export const getExpertDashboardSummary = async (expertId) => {
   ]);
   const counts = summaryRows[0] || {};
 
+  const profile = await ExpertProfile.findOne({ userId: expertId.trim() }).lean();
   return {
+    profile: {
+      name: profile?.displayName || "Expert",
+      role: ROLES.EXPERT,
+      isOnline: Boolean(profile?.availability && profile?.status === "active"),
+      assignedWorkCount: counts.assigned || 0,
+      photoUrl: profile?.photoUrl || "",
+    },
     summary: {
       assigned: counts.assigned || 0,
       processing: counts.processing || 0,
       documentsRequired: counts.documentsRequired || 0,
       completedToday: completedRows[0]?.count || 0,
+      awaitingAdminReview: counts.awaitingAdminReview || 0,
+      completed: counts.completed || 0,
+    },
+    recentAssignments: recent.applications,
+  };
+};
+
+export const getExpertProfile = async (expertId) => {
+  if (!expertId?.trim()) throw new ApiError(400, "Expert identity is required");
+  const profile = await ExpertProfile.findOne({ userId: expertId.trim() }).lean();
+  const assignedWorkCount = await Application.countDocuments(expertOwnerFilter(expertId.trim()));
+  if (!profile) {
+    return {
+      userId: expertId.trim(),
+      displayName: "Expert",
+      email: "",
+      phone: "",
+      categories: [],
+      skills: [],
+      availability: false,
+      status: "inactive",
+      role: ROLES.EXPERT,
+      isOnline: false,
+      assignedWorkCount,
+      profileConfigured: false,
+    };
+  }
+  return { ...profile, role: ROLES.EXPERT, isOnline: Boolean(profile.availability && profile.status === "active"), assignedWorkCount, profileConfigured: true };
+};
+
+export const getPartnerDashboardSummary = async (partnerId) => {
+  if (!partnerId?.trim()) throw new ApiError(400, "Partner identity is required");
+  const ownerFilter = partnerOwnerFilter(partnerId.trim());
+  const [profile, rows, recent] = await Promise.all([
+    PartnerProfile.findOne({ userId: partnerId.trim() }).lean(),
+    Application.aggregate([
+      { $match: ownerFilter },
+      { $group: {
+        _id: null,
+        assigned: { $sum: 1 },
+        processing: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.PROCESSING] }, 1, 0] } },
+        documentsRequired: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.DOCUMENTS_REQUIRED] }, 1, 0] } },
+        awaitingAdminReview: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW] }, 1, 0] } },
+        completed: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.COMPLETED] }, 1, 0] } },
+      } },
+      { $project: { _id: 0 } },
+    ]),
+    getPartnerApplications(partnerId, { page: 1, limit: 5 }),
+  ]);
+  if (!profile) throw new ApiError(404, "Partner profile not found");
+  const counts = rows[0] || {};
+  return {
+    profile: {
+      name: profile.businessName,
+      role: ROLES.PARTNER,
+      isOnline: Boolean(profile.availability && profile.isActive && profile.verificationStatus === "approved"),
+      assignedWorkCount: counts.assigned || 0,
+      verificationStatus: profile.verificationStatus,
+      photoUrl: profile.photoUrl || "",
+    },
+    summary: {
+      assigned: counts.assigned || 0,
+      processing: counts.processing || 0,
+      documentsRequired: counts.documentsRequired || 0,
+      awaitingAdminReview: counts.awaitingAdminReview || 0,
+      completed: counts.completed || 0,
     },
     recentAssignments: recent.applications,
   };
@@ -1133,6 +1231,7 @@ export const getExpertApplicationById = async (expertId, id) => {
     ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt }) => ({ fieldName, fieldKey, label, documentType, originalName, mimeType, format, size, required, status, uploadedAt })
   );
   safeApplication.additionalDocuments = (application.additionalDocuments || []).map(({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }) => ({ fieldName, label, customLabel, originalName, mimeType, format, size, status, uploadedAt }));
+  safeApplication.completionDocuments = (application.completionDocuments || []).map(({ fieldName, originalName, format, size }) => ({ fieldName, originalName, format, size }));
   safeApplication.timeline = application.timeline.map(({ status, remarks, createdAt }) => ({
     status,
     remarks,
@@ -1174,6 +1273,9 @@ export const updateExpertApplicationStatus = async ({
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findExpertApplicationForUpdate(expertId, id, session);
+    if (nextStatus === APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW && !application.completionDocuments?.length) {
+      throw new ApiError(409, "Upload at least one completion document before submitting for admin review");
+    }
     await applyStatusChange({
       application,
       nextStatus,
@@ -1291,6 +1393,9 @@ export const updatePartnerApplicationStatus = async ({ partnerId, id, status, re
   let application;
   const execute = async (session) => {
     application = await findPartnerApplicationForUpdate(partnerId, id, session);
+    if (nextStatus === APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW && !application.completionDocuments?.length) {
+      throw new ApiError(409, "Upload at least one completion document before submitting for admin review");
+    }
     await applyStatusChange({ application, nextStatus, remarks: cleanRemarks, updatedBy: partnerId, session });
   };
   if (existingSession) await execute(existingSession);
@@ -1319,6 +1424,62 @@ export const requestPartnerApplicationDocuments = async ({ partnerId, id, remark
   });
   return application;
 };
+
+const uploadAssigneeCompletionDocuments = async ({ assigneeId, role, id, files = [] }) => {
+  if (!files.length) throw new ApiError(400, "At least one completion document is required");
+  if (files.some((file) => !hasAllowedFileSignature(file))) {
+    throw new ApiError(400, "A completion document has invalid file content");
+  }
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Application not found");
+  const ownerFilter = role === ROLES.EXPERT ? expertOwnerFilter(assigneeId.trim()) : partnerOwnerFilter(assigneeId.trim());
+  const application = await Application.findOne({ _id: id, ...ownerFilter });
+  if (!application) throw new ApiError(404, "Application not found");
+  if (TERMINAL_APPLICATION_STATUSES.has(application.status)) {
+    throw new ApiError(409, "Completion documents cannot be changed after work is closed");
+  }
+  const uploaded = [];
+  try {
+    for (const file of files) {
+      const result = await uploadBuffer(file, application.applicationNumber, "completion-documents");
+      uploaded.push({
+        fieldName: "completionDocuments",
+        label: "Completion Document",
+        originalName: file.originalname,
+        publicId: result.public_id,
+        secureUrl: result.secure_url,
+        resourceType: result.resource_type,
+        deliveryType: result.type || "authenticated",
+        format: result.format || "",
+        size: result.bytes ?? file.size,
+        mimeType: file.mimetype,
+        source: "completion",
+        uploadedBy: assigneeId.trim(),
+        uploadedByRole: role,
+        verificationStatus: "pending",
+      });
+    }
+    await mongoose.connection.transaction(async (session) => {
+      application.completionDocuments.push(...uploaded);
+      await application.save({ session });
+      await ApplicationTimeline.create([{
+        application: application._id,
+        status: application.status,
+        remarks: `${uploaded.length} completion document${uploaded.length === 1 ? "" : "s"} uploaded for admin review.`,
+        updatedBy: assigneeId.trim(),
+      }], { session });
+    });
+    return uploaded.map(({ publicId, secureUrl, ...document }) => document);
+  } catch (error) {
+    await removeUploadedFiles(uploaded);
+    throw error;
+  }
+};
+
+export const uploadExpertCompletionDocuments = ({ expertId, id, files }) =>
+  uploadAssigneeCompletionDocuments({ assigneeId: expertId, role: ROLES.EXPERT, id, files });
+
+export const uploadPartnerCompletionDocuments = ({ partnerId, id, files }) =>
+  uploadAssigneeCompletionDocuments({ assigneeId: partnerId, role: ROLES.PARTNER, id, files });
 
 export const addAdminVisibleRemark = async ({ applicationNumber, remarks, updatedBy }) => {
   const cleanRemarks = sanitizeNotificationText(remarks, 1000);

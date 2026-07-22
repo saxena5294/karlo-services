@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Upload } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -6,6 +6,7 @@ import {
   getExpertApplicationById,
   requestApplicationDocuments,
   updateExpertApplicationStatus,
+  uploadExpertCompletionDocuments,
 } from "../../api/expertApi";
 import ConfirmDialog from "../../components/dashboard/ConfirmDialog";
 import EmptyState from "../../components/dashboard/EmptyState";
@@ -21,9 +22,7 @@ import {
 const expertStatuses = [
   "Documents Required",
   "Processing",
-  "Approved",
-  "Completed",
-  "Rejected",
+  "Awaiting Admin Review",
 ];
 
 const ExpertApplicationDetails = () => {
@@ -34,6 +33,7 @@ const ExpertApplicationDetails = () => {
   const [statusRemarks, setStatusRemarks] = useState("");
   const [remark, setRemark] = useState("");
   const [documentRequest, setDocumentRequest] = useState("");
+  const [completionFiles, setCompletionFiles] = useState([]);
   const [pendingAction, setPendingAction] = useState(null);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState({ type: "", message: "" });
@@ -108,6 +108,21 @@ const ExpertApplicationDetails = () => {
         type: "error",
         message: error.response?.data?.message || "Unable to add the remark.",
       });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadCompletion = async () => {
+    if (!completionFiles.length) return;
+    setBusy(true);
+    try {
+      await uploadExpertCompletionDocuments(id, completionFiles);
+      setCompletionFiles([]);
+      setFeedback({ type: "success", message: "Completion documents uploaded. You can now submit for admin review." });
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setFeedback({ type: "error", message: error.response?.data?.message || "Unable to upload completion documents." });
     } finally {
       setBusy(false);
     }
@@ -297,6 +312,15 @@ const ExpertApplicationDetails = () => {
             </div>
           ))}
         </dl>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <h2 className="text-lg font-bold">Completion documents</h2>
+        <p className="mt-1 text-sm text-slate-500">Upload completed work before changing the status to Awaiting Admin Review.</p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <input type="file" multiple accept=".pdf,image/jpeg,image/png" onChange={(event) => setCompletionFiles([...event.target.files])} className="min-w-0 flex-1 rounded-xl border p-2" />
+          <button type="button" disabled={busy || !completionFiles.length} onClick={uploadCompletion} className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"><Upload size={17} /> Upload</button>
+        </div>
       </section>
 
       <DocumentViewer applicationId={id} title="Assigned application documents" />
