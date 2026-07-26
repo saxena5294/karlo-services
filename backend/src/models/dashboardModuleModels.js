@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { DeclarationForm } from "./declarationFormModel.js";
 
 const httpsUrl = (value) => !value || /^https:\/\/[\w.-]+(?:[/:?#][^\s]*)?$/i.test(value);
 const roleField = { type: String, enum: ["customer", "partner"], required: true, index: true };
@@ -7,11 +8,6 @@ const softwareAssetSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 160 }, description: { type: String, trim: true, maxlength: 1000, default: "" }, icon: { type: String, trim: true, default: "💻" }, version: { type: String, trim: true, maxlength: 80, default: "" }, fileSize: { type: String, trim: true, maxlength: 80, default: "" }, operatingSystem: { type: String, trim: true, maxlength: 160, default: "" }, downloadUrl: { type: String, required: true, trim: true, validate: { validator: httpsUrl, message: "Software download URL must use HTTPS" } }, installationGuide: { type: String, trim: true, maxlength: 2000, default: "" }, isActive: { type: Boolean, default: true, index: true }, order: { type: Number, min: 0, default: 0 }, createdBy: { type: String, required: true }, updatedBy: { type: String, required: true },
 }, { timestamps: true, collection: "softwareassets" });
 softwareAssetSchema.index({ isActive: 1, order: 1 });
-
-const declarationFormSchema = new mongoose.Schema({
-  title: { type: String, required: true, trim: true, maxlength: 180 }, description: { type: String, trim: true, maxlength: 1000, default: "" }, category: { type: String, trim: true, maxlength: 100, default: "Other" }, language: { type: String, trim: true, maxlength: 80, default: "" }, version: { type: String, trim: true, maxlength: 80, default: "" }, fileUrl: { type: String, required: true, trim: true, validate: { validator: httpsUrl, message: "Declaration file URL must use HTTPS" } }, fileName: { type: String, required: true, trim: true, maxlength: 240 }, fileSize: { type: String, trim: true, maxlength: 80, default: "" }, isActive: { type: Boolean, default: true, index: true }, order: { type: Number, min: 0, default: 0 }, createdBy: { type: String, required: true }, updatedBy: { type: String, required: true },
-}, { timestamps: true, collection: "declarationforms" });
-declarationFormSchema.index({ isActive: 1, order: 1 });
 
 const paymentRecordSchema = new mongoose.Schema({
   transactionId: { type: String, required: true, unique: true, trim: true }, userId: { type: String, required: true, trim: true, index: true }, userRole: roleField, applicationId: { type: mongoose.Schema.Types.ObjectId, ref: "Application", default: null }, type: { type: String, enum: ["service_payment", "joining_fee", "renewal_fee", "refund", "cashback", "other"], required: true }, amount: { type: Number, required: true, min: 0 }, status: { type: String, enum: ["pending", "successful", "failed", "refunded"], required: true, index: true }, paymentMethod: { type: String, trim: true, default: "" }, referenceNumber: { type: String, trim: true, default: "" }, description: { type: String, trim: true, maxlength: 500, default: "" }, paidAt: { type: Date, default: null },
@@ -44,7 +40,7 @@ const supportTicketSchema = new mongoose.Schema({
 supportTicketSchema.index({ createdByUserId: 1, createdByRole: 1, status: 1, updatedAt: -1 });
 
 export const SoftwareAsset = mongoose.model("SoftwareAsset", softwareAssetSchema);
-export const DeclarationForm = mongoose.model("DeclarationForm", declarationFormSchema);
+export { DeclarationForm };
 export const PaymentRecord = mongoose.model("PaymentRecord", paymentRecordSchema);
 export const RewardRecord = mongoose.model("RewardRecord", rewardRecordSchema);
 export const ReferralAccount = mongoose.model("ReferralAccount", referralAccountSchema);

@@ -1,6 +1,6 @@
-import { Copy, Download, FileText, RefreshCw } from "lucide-react";
+import { Copy, Download, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
-import { claimReferral, getDeclarationForms, getPaymentHistory, getReferrals, getRenewal, getRewards, getSoftware, requestRenewal } from "../../api/dashboardApi";
+import { claimReferral, getPaymentHistory, getReferrals, getRenewal, getRewards, getSoftware, requestRenewal } from "../../api/dashboardApi";
 import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import { formatDate } from "../../utils/dashboardFormatters";
@@ -13,11 +13,6 @@ const useLoad = (request) => { const [data, setData] = useState(null); const [er
 export const SoftwarePage = () => {
   const { data, error } = useLoad(getSoftware);
   return <Page title="Software" description="Downloads published and approved by Karlo Services administrators.">{error ? <ErrorState message={error} /> : !data ? <LoadingSkeleton count={4} /> : !data.software.length ? <EmptyState title="No software available" description="No approved software downloads have been published." /> : <div className="grid gap-4 md:grid-cols-2">{data.software.map((item) => <article key={item._id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex gap-4"><span className="text-3xl">{item.icon || "💻"}</span><div><h2 className="font-bold">{item.name}</h2><p className="text-xs text-slate-500">{[item.version, item.fileSize, item.operatingSystem].filter(Boolean).join(" · ")}</p></div></div><p className="mt-4 text-sm leading-6 text-slate-600">{item.description}</p>{item.installationGuide && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{item.installationGuide}</p>}<a href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white"><Download size={17} /> Download</a></article>)}</div>}</Page>;
-};
-
-export const DeclarationFormsPage = () => {
-  const { data, error } = useLoad(getDeclarationForms);
-  return <Page title="Declaration forms" description="Verified declaration documents managed by Karlo Services.">{error ? <ErrorState message={error} /> : !data ? <LoadingSkeleton count={4} /> : !data.forms.length ? <EmptyState title="No declaration forms available" description="No forms have been uploaded by an administrator." /> : <div className="grid gap-4 md:grid-cols-2">{data.forms.map((item) => <article key={item._id} className="rounded-2xl border bg-white p-5 shadow-sm"><FileText className="text-blue-700" /><h2 className="mt-3 font-bold">{item.title}</h2><p className="mt-1 text-xs text-slate-500">{[item.category, item.language, item.version, item.fileSize].filter(Boolean).join(" · ")}</p><p className="mt-3 text-sm leading-6 text-slate-600">{item.description}</p><a href={item.fileUrl} target="_blank" rel="noopener noreferrer" download={item.fileName} className="mt-5 inline-flex items-center gap-2 rounded-xl border border-blue-700 px-4 py-2.5 text-sm font-semibold text-blue-700"><Download size={17} /> Download {item.fileName}</a></article>)}</div>}</Page>;
 };
 
 export const PaymentHistoryPage = () => {

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { dashboardFeatures } from "../../config/dashboardFeatures";
+import DeclarationFormsMenu from "../declarations/DeclarationFormsMenu";
 
 const customerNavigation = [
   { name: "Dashboard", path: "/customer/dashboard", icon: LayoutDashboard },
@@ -74,6 +75,7 @@ const adminNavigation = [
   { name: "Reports", path: "/admin/reports", icon: BarChart3 },
   { name: "Notifications", path: "/admin/notifications", icon: Bell },
   { name: "Content", path: "/admin/content", icon: FileText },
+  { name: "Declaration Forms", path: "/admin/declaration-forms", icon: FileText },
   { name: "Audit Logs", path: "/admin/audit-logs", icon: ScrollText },
   { name: "Settings", path: "/admin/settings", icon: Settings },
 ];
@@ -126,7 +128,10 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-4" aria-label={`${portalLabel} navigation`}>
-        {navigation.map(({ name, path, icon: Icon, disabled }) => disabled ? (
+        {navigation.map(({ name, path, icon: Icon, disabled }) => (
+          name === "Declaration Forms" && (portal === "customer" || portal === "partner") ? (
+            <DeclarationFormsMenu key={path} portal={portal} onNavigate={onClose} />
+          ) : disabled ? (
           <div key={path} aria-disabled="true" title="This service will be available soon." className="flex cursor-not-allowed items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-400 opacity-60">
             <Icon size={20} /><span className="min-w-0 flex-1">{name}</span><span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">Coming Soon</span>
           </div>
@@ -147,7 +152,7 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
             <Icon size={20} />
             {name}
           </Link>
-        ))}
+        )))}
       </nav>
 
       <div className="border-t border-slate-200 p-4">

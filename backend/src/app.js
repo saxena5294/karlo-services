@@ -14,6 +14,7 @@ import adminCmsRoutes from "./routes/adminCmsRoutes.js";
 import dashboardModuleRoutes from "./routes/dashboardModuleRoutes.js";
 import adminDashboardModuleRoutes from "./routes/adminDashboardModuleRoutes.js";
 import mobileVerificationRoutes from "./routes/mobileVerificationRoutes.js";
+import declarationFormRoutes from "./routes/declarationFormRoutes.js";
 import {
   errorMiddleware,
   notFoundMiddleware,
@@ -47,6 +48,7 @@ app.use("/api/admin/cms", adminCmsRoutes);
 app.use("/api/dashboard", dashboardModuleRoutes);
 app.use("/api/admin/dashboard-modules", adminDashboardModuleRoutes);
 app.use("/api/mobile-verification", mobileVerificationRoutes);
+app.use("/api/declaration-forms", declarationFormRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use(notFoundMiddleware);

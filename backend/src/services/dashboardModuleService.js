@@ -6,6 +6,7 @@ import {
   DeclarationForm, PartnerRenewal, PaymentRecord, Referral, ReferralAccount,
   RewardRecord, SoftwareAsset, SupportTicket,
 } from "../models/dashboardModuleModels.js";
+import { listDeclarationForms as listDeclarationFormsLibrary } from "./declarationFormService.js";
 import { ApiError } from "../utils/ApiError.js";
 
 const pageOf = (query = {}) => { const page = Math.max(Number.parseInt(query.page, 10) || 1, 1); const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 20, 1), 100); return { page, limit, skip: (page - 1) * limit }; };
@@ -13,7 +14,7 @@ const clean = (value, label, max = 3000) => { const result = String(value || "")
 const paginate = async (Model, filter, query, populate = null) => { const { page, limit, skip } = pageOf(query); let operation = Model.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit); if (populate) operation = operation.populate(...populate); const [items, total] = await Promise.all([operation.lean(), Model.countDocuments(filter)]); return { items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } }; };
 
 export const listSoftware = () => SoftwareAsset.find({ isActive: true }).select("name description icon version fileSize operatingSystem downloadUrl installationGuide order").sort({ order: 1, name: 1 }).lean();
-export const listDeclarationForms = () => DeclarationForm.find({ isActive: true }).select("title description category language version fileUrl fileName fileSize order").sort({ order: 1, title: 1 }).lean();
+export const listDeclarationForms = async (role, query) => (await listDeclarationFormsLibrary(role, query)).forms;
 export const listPayments = (userId, role, query) => paginate(PaymentRecord, { userId, userRole: role }, query, ["applicationId", "applicationNumber"]);
 export const listRewards = async (userId, role, query) => { const result = await paginate(RewardRecord, { userId, userRole: role }, query); const [totals = {}] = await RewardRecord.aggregate([{ $match: { userId, userRole: role } }, { $group: { _id: null, approved: { $sum: { $cond: [{ $in: ["$status", ["approved", "credited"]] }, "$amount", 0] } }, pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, "$amount", 0] } } } }]); return { rewards: result.items, pagination: result.pagination, summary: { approved: totals.approved || 0, pending: totals.pending || 0 } }; };
 
@@ -63,7 +64,7 @@ export const getTicket = async (userId, role, id) => { if (!mongoose.isValidObje
 export const replyToTicket = async (userId, role, id, message) => { await getTicket(userId, role, id); const ticket = await SupportTicket.findOneAndUpdate({ _id: id, ...ticketOwner(userId, role), status: { $ne: "closed" } }, { $push: { replies: { authorUserId: userId, authorRole: role, message: clean(message, "Reply", 3000) } }, $set: { status: "waiting_for_user" } }, { returnDocument: "after", runValidators: true }).lean(); if (!ticket) throw new ApiError(409, "Closed tickets cannot receive replies"); return ticket; };
 export const closeTicket = async (userId, role, id) => { const ticket = await SupportTicket.findOneAndUpdate({ _id: id, ...ticketOwner(userId, role), status: "resolved" }, { $set: { status: "closed", closedAt: new Date() } }, { returnDocument: "after" }).lean(); if (!ticket) throw new ApiError(409, "Only resolved tickets can be closed"); return ticket; };
 
-const resources = { software: { Model: SoftwareAsset, fields: ["name", "description", "icon", "version", "fileSize", "operatingSystem", "downloadUrl", "installationGuide", "isActive", "order"] }, declarations: { Model: DeclarationForm, fields: ["title", "description", "category", "language", "version", "fileUrl", "fileName", "fileSize", "isActive", "order"] } };
+const resources = { software: { Model: SoftwareAsset, fields: ["name", "description", "icon", "version", "fileSize", "operatingSystem", "downloadUrl", "installationGuide", "isActive", "order"] }, declarations: { Model: DeclarationForm, fields: ["title", "slug", "description", "category", "language", "fileUrl", "publicId", "fileName", "fileType", "visibleTo", "displayOrder", "isPopular", "isActive"] } };
 const resourceConfig = (type) => { const config = resources[type]; if (!config) throw new ApiError(404, "Resource type not found"); return config; };
 const allowedPayload = (payload, fields) => { const extra = Object.keys(payload).filter((key) => !fields.includes(key)); if (extra.length) throw new ApiError(400, `Unexpected fields: ${extra.join(", ")}`); return payload; };
 export const adminListResources = (type) => resourceConfig(type).Model.find().sort({ order: 1, createdAt: -1 }).lean();

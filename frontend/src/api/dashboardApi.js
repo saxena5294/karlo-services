@@ -1,7 +1,6 @@
 import API from "./axiosInstance";
 const data = (request) => request.then((response) => response.data);
 export const getSoftware = () => data(API.get("/dashboard/software"));
-export const getDeclarationForms = () => data(API.get("/dashboard/declaration-forms"));
 export const getPaymentHistory = (params = {}) => data(API.get("/dashboard/payments", { params }));
 export const getRewards = (params = {}) => data(API.get("/dashboard/rewards", { params }));
 export const getReferrals = () => data(API.get("/dashboard/referrals"));

@@ -3,7 +3,7 @@ import * as service from "../services/dashboardModuleService.js";
 const send = (handler, status = 200) => async (req, res, next) => { try { return res.status(status).json({ success: true, ...(await handler(req)) }); } catch (error) { return next(error); } };
 
 export const software = send(async () => ({ software: await service.listSoftware() }));
-export const declarations = send(async () => ({ forms: await service.listDeclarationForms() }));
+export const declarations = send(async (req) => ({ forms: await service.listDeclarationForms(req.auth.role, req.query) }));
 export const payments = send(async (req) => { const result = await service.listPayments(req.auth.userId, req.auth.role, req.query); return { payments: result.items, pagination: result.pagination }; });
 export const rewards = send(async (req) => service.listRewards(req.auth.userId, req.auth.role, req.query));
 export const referrals = send(async (req) => service.getReferralDashboard(req.auth.userId, req.auth.role));

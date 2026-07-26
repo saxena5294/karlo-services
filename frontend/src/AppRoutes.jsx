@@ -19,7 +19,7 @@ const ComingSoonPage = page(() => import("./pages/shared/ComingSoonPage"));
 const DashboardServices = page(() => import("./pages/shared/DashboardServices"));
 const FormHistory = page(() => import("./pages/shared/FormHistory"));
 const loadDashboardModules = () => import("./pages/shared/DashboardModules");
-const DeclarationFormsPage = namedPage(loadDashboardModules, "DeclarationFormsPage");
+const DeclarationFormsPage = page(() => import("./pages/shared/DeclarationFormsPage"));
 const PartnerRenewalPage = namedPage(loadDashboardModules, "PartnerRenewalPage");
 const PaymentHistoryPage = namedPage(loadDashboardModules, "PaymentHistoryPage");
 const ReferEarnPage = namedPage(loadDashboardModules, "ReferEarnPage");
@@ -42,6 +42,7 @@ const AdminLeads = page(() => import("./pages/admin/AdminLeads"));
 const AdminLeadDetails = page(() => import("./pages/admin/AdminLeadDetails"));
 const ContentManagementPage = page(() => import("./pages/admin/content/ContentManagementPage"));
 const AdminAuditLogs = page(() => import("./pages/admin/AdminAuditLogs"));
+const AdminDeclarationForms = page(() => import("./pages/admin/AdminDeclarationForms"));
 const About = page(() => import("./pages/public/About"));
 const ApplyService = page(() => import("./pages/public/ApplyService"));
 const AuthPlaceholder = page(() => import("./pages/public/AuthPlaceholder"));
@@ -155,6 +156,7 @@ const AppRoutes = () => (
       <Route path="reports" element={<AdminReports />} />
       <Route path="notifications" element={<NotificationsPage />} />
       <Route path="content" element={<ContentManagementPage />} />
+      <Route path="declaration-forms" element={<AdminDeclarationForms />} />
       <Route path="audit-logs" element={<AdminAuditLogs />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>
