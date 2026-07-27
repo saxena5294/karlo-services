@@ -4,9 +4,12 @@ import mongoose from "mongoose";
 import { DeclarationForm } from "../src/models/declarationFormModel.js";
 import {
   buildDeclarationFormFilter,
+  DECLARATION_CATEGORIES,
+  DECLARATION_LANGUAGES,
   getDeclarationDownload,
   slugify,
 } from "../src/services/declarationFormService.js";
+import { hasPdfSignature } from "../src/services/declarationPdfStorageService.js";
 
 test("declaration form schema has unique Cloudinary and slug identifiers", () => {
   assert.equal(DeclarationForm.schema.path("publicId").options.unique, true);
@@ -34,6 +37,34 @@ test("declaration form schema requires a PDF, HTTPS URL, and audience", () => {
   assert.ok(invalid.errors.fileUrl);
   assert.ok(invalid.errors.fileType);
   assert.ok(invalid.errors.visibleTo);
+});
+
+test("declaration form schema stores uploaded PDF metadata", () => {
+  const form = new DeclarationForm({
+    title: "Aadhaar Declaration",
+    slug: "aadhaar-declaration",
+    category: "Aadhaar",
+    language: "English",
+    fileUrl: "https://res.cloudinary.com/demo/raw/upload/form.pdf",
+    publicId: "karlo-services/declaration-forms/aadhaar-declaration.pdf",
+    fileName: "aadhaar.pdf",
+    fileType: "pdf",
+    mimeType: "application/pdf",
+    fileSize: 1234,
+    cloudinaryResourceType: "raw",
+    visibleTo: ["customer"],
+  });
+
+  assert.equal(form.validateSync(), undefined);
+  assert.equal(form.mimeType, "application/pdf");
+  assert.equal(form.fileSize, 1234);
+  assert.ok(DECLARATION_CATEGORIES.includes(form.category));
+  assert.ok(DECLARATION_LANGUAGES.includes(form.language));
+});
+
+test("PDF content validation checks the file signature", () => {
+  assert.equal(hasPdfSignature(Buffer.from("%PDF-1.7\ncontent")), true);
+  assert.equal(hasPdfSignature(Buffer.from("PK zip content")), false);
 });
 
 test("customer and partner listing filters enforce active role visibility", () => {
@@ -81,4 +112,3 @@ test("download atomically increments only an active form visible to the role", a
     DeclarationForm.findOneAndUpdate = original;
   }
 });
-

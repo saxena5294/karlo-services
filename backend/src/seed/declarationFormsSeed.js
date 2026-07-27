@@ -7,9 +7,11 @@ import { DeclarationForm } from "../models/declarationFormModel.js";
 dotenv.config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 
 /*
- * Replace each REPLACE_* publicId and fileUrl with the values from the existing
- * Cloudinary assets in karlo-services/declaration-forms. Add one object per PDF.
- * This script never uploads or removes a Cloudinary asset.
+ * LEGACY / MANUAL IMPORT ONLY.
+ *
+ * New declaration forms must be uploaded through the Admin Declaration Forms page.
+ * Keep this script only for importing older Cloudinary-hosted PDFs. It never runs at
+ * application startup and never uploads or removes a Cloudinary asset.
  */
 export const declarationFormsSeedData = [
   {

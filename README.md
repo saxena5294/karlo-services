@@ -27,6 +27,12 @@ VITE_API_URL=http://localhost:5000/api
 
 Cloudinary credentials belong only in `backend/.env`. Never add them to a `VITE_` variable.
 
+Declaration PDFs are uploaded from the Admin Declaration Forms page. The backend validates
+the PDF, uploads it to `karlo-services/declaration-forms` in Cloudinary, and stores the
+returned metadata in MongoDB. `npm run legacy:seed-declarations` is retained only for
+manual imports of PDFs that already exist in Cloudinary; it is not part of normal setup
+or application startup.
+
 Install, seed form configurations without replacing existing records, and run:
 
 ```powershell

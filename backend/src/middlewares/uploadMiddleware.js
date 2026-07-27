@@ -34,3 +34,14 @@ export const uploadCmsImage = multer({
   storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(imageMimeTypes.has(file.mimetype) ? null : new Error("Only JPG, PNG, and WEBP images are allowed"), imageMimeTypes.has(file.mimetype)),
 }).single("image");
+
+export const uploadDeclarationPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    if (file.mimetype !== "application/pdf") {
+      return callback(new Error("Only PDF files are allowed"));
+    }
+    return callback(null, true);
+  },
+}).single("declarationFile");

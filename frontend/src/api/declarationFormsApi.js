@@ -15,15 +15,20 @@ export const getAdminDeclarationForms = (params = {}) => data(
   API.get("/admin/declaration-forms", { params }),
 );
 
-export const createAdminDeclarationForm = (payload) => data(
-  API.post("/admin/declaration-forms", payload),
+export const createAdminDeclarationForm = (payload, onUploadProgress) => data(
+  API.post("/admin/declaration-forms", payload, { onUploadProgress }),
 );
 
 export const updateAdminDeclarationForm = (id, payload) => data(
   API.patch(`/admin/declaration-forms/${encodeURIComponent(id)}`, payload),
 );
 
+export const replaceAdminDeclarationFormPdf = (id, payload, onUploadProgress) => data(
+  API.patch(`/admin/declaration-forms/${encodeURIComponent(id)}/file`, payload, {
+    onUploadProgress,
+  }),
+);
+
 export const deleteAdminDeclarationForm = (id) => API.delete(
   `/admin/declaration-forms/${encodeURIComponent(id)}`,
 );
-

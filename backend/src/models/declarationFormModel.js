@@ -73,6 +73,33 @@ const declarationFormSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    mimeType: {
+      type: String,
+      enum: ["application/pdf"],
+      default: "application/pdf",
+      trim: true,
+    },
+    fileSize: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+    cloudinaryAssetId: {
+      type: String,
+      trim: true,
+      default: "",
+      maxlength: 500,
+    },
+    cloudinaryVersion: {
+      type: Number,
+      min: 0,
+    },
+    cloudinaryResourceType: {
+      type: String,
+      trim: true,
+      default: "raw",
+      maxlength: 40,
+    },
     visibleTo: {
       type: [{ type: String, enum: AUDIENCES }],
       required: true,

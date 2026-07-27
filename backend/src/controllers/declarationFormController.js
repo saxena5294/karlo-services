@@ -29,8 +29,25 @@ export const adminList = async (req, res, next) => {
 
 export const adminCreate = async (req, res, next) => {
   try {
-    const form = await declarationForms.adminCreateDeclarationForm(req.body, req.auth.userId);
+    const form = await declarationForms.adminCreateDeclarationForm(
+      req.body,
+      req.file,
+      req.auth.userId,
+    );
     return res.status(201).json({ success: true, form });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const adminReplaceFile = async (req, res, next) => {
+  try {
+    const form = await declarationForms.adminReplaceDeclarationPdf(
+      req.params.id,
+      req.file,
+      req.auth.userId,
+    );
+    return res.status(200).json({ success: true, form });
   } catch (error) {
     return next(error);
   }
@@ -57,4 +74,3 @@ export const adminDelete = async (req, res, next) => {
     return next(error);
   }
 };
-

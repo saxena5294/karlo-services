@@ -15,7 +15,7 @@
     "seed:simple-forms": "node src/scripts/applySimpleFormTemplates.js",
     "migrate:service-business-fields": "node src/scripts/migrateServiceBusinessFields.js",
     "migrate:application-documents": "node src/scripts/migrateApplicationDocumentMetadata.js",
-    "seed:declarations": "node src/seed/declarationFormsSeed.js"
+    "legacy:seed-declarations": "node src/seed/declarationFormsSeed.js"
   },
   "keywords": [
     "mern",
