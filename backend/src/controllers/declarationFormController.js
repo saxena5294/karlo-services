@@ -9,14 +9,42 @@ export const list = async (req, res, next) => {
   }
 };
 
-export const download = async (req, res, next) => {
+const safeFileName = (value) => String(value || "declaration.pdf")
+  .replace(/[\r\n"]/g, "_")
+  .slice(0, 200);
+
+const deliverPdf = (attachment) => async (req, res, next) => {
   try {
-    const fileUrl = await declarationForms.getDeclarationDownload(req.params.id, req.auth.role);
-    return res.redirect(302, fileUrl);
+    const file = await declarationForms.getDeclarationPdf(
+      req.params.id,
+      req.auth.role,
+      attachment,
+    );
+    const fileName = safeFileName(file.fileName);
+    res.set({
+      "Content-Type": file.mimeType,
+      "Content-Length": file.buffer.length,
+      "Content-Disposition": `${attachment ? "attachment" : "inline"}; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    if (attachment) {
+      res.once("finish", () => {
+        declarationForms.recordDeclarationDownload(req.params.id, req.auth.role)
+          .catch((error) => console.error("Declaration download counter update failed", {
+            declarationFormId: req.params.id,
+            reason: error?.message || "Unknown error",
+          }));
+      });
+    }
+    return res.status(200).send(file.buffer);
   } catch (error) {
     return next(error);
   }
 };
+
+export const preview = deliverPdf(false);
+export const download = deliverPdf(true);
 
 export const adminList = async (req, res, next) => {
   try {

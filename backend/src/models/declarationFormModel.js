@@ -96,9 +96,15 @@ const declarationFormSchema = new mongoose.Schema(
     },
     cloudinaryResourceType: {
       type: String,
+      enum: ["image", "raw"],
       trim: true,
       default: "raw",
-      maxlength: 40,
+    },
+    cloudinaryDeliveryType: {
+      type: String,
+      enum: ["upload", "private", "authenticated"],
+      trim: true,
+      default: "upload",
     },
     visibleTo: {
       type: [{ type: String, enum: AUDIENCES }],

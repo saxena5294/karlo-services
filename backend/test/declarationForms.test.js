@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Writable } from "node:stream";
 import mongoose from "mongoose";
+import { getCloudinary } from "../src/config/cloudinary.js";
 import { DeclarationForm } from "../src/models/declarationFormModel.js";
 import {
+  adminReplaceDeclarationPdf,
   buildDeclarationFormFilter,
   DECLARATION_CATEGORIES,
   DECLARATION_LANGUAGES,
-  getDeclarationDownload,
+  recordDeclarationDownload,
   slugify,
 } from "../src/services/declarationFormService.js";
 import { hasPdfSignature } from "../src/services/declarationPdfStorageService.js";
@@ -87,28 +90,130 @@ test("search input is escaped before being used as a regular expression", () => 
   assert.equal(slugify(" Income  Declaration (Hindi) "), "income-declaration-hindi");
 });
 
-test("download atomically increments only an active form visible to the role", async () => {
+test("successful download recording atomically increments only an active form visible to the role", async () => {
   const id = new mongoose.Types.ObjectId().toString();
-  const original = DeclarationForm.findOneAndUpdate;
+  const original = DeclarationForm.updateOne;
   let operation;
-  DeclarationForm.findOneAndUpdate = (filter, update, options) => {
-    operation = { filter, update, options };
-    return {
-      select: async () => ({ fileUrl: "https://res.cloudinary.com/demo/raw/upload/form.pdf" }),
-    };
+  DeclarationForm.updateOne = async (filter, update) => {
+    operation = { filter, update };
+    return { modifiedCount: 1 };
   };
 
   try {
-    const url = await getDeclarationDownload(id, "customer");
-    assert.equal(url, "https://res.cloudinary.com/demo/raw/upload/form.pdf");
+    const updated = await recordDeclarationDownload(id, "customer");
+    assert.equal(updated, true);
     assert.deepEqual(operation.filter, {
       _id: id,
       isActive: true,
       visibleTo: "customer",
     });
     assert.deepEqual(operation.update, { $inc: { downloadCount: 1 } });
-    assert.equal(operation.options.returnDocument, "after");
   } finally {
-    DeclarationForm.findOneAndUpdate = original;
+    DeclarationForm.updateOne = original;
+  }
+});
+
+test("admin download recording can increment inactive declaration forms", async () => {
+  const id = new mongoose.Types.ObjectId().toString();
+  const original = DeclarationForm.updateOne;
+  let filter;
+  DeclarationForm.updateOne = async (nextFilter) => {
+    filter = nextFilter;
+    return { modifiedCount: 1 };
+  };
+  try {
+    assert.equal(await recordDeclarationDownload(id, "admin"), true);
+    assert.deepEqual(filter, { _id: id });
+  } finally {
+    DeclarationForm.updateOne = original;
+  }
+});
+
+test("PDF replacement updates file fields before deleting the old asset and preserves metadata", async () => {
+  process.env.CLOUDINARY_CLOUD_NAME ||= "declaration-test";
+  process.env.CLOUDINARY_API_KEY ||= "test-key";
+  process.env.CLOUDINARY_API_SECRET ||= "test-secret";
+
+  const id = new mongoose.Types.ObjectId().toString();
+  const oldAsset = {
+    slug: "income-declaration",
+    publicId: "karlo-services/declaration-forms/old.pdf",
+    cloudinaryResourceType: "raw",
+    cloudinaryDeliveryType: "upload",
+  };
+  const replacement = {
+    public_id: "karlo-services/declaration-forms/new",
+    secure_url: "https://res.cloudinary.com/test/image/upload/new.pdf",
+    bytes: 28,
+    asset_id: "new-asset",
+    version: 2,
+    resource_type: "image",
+    type: "upload",
+  };
+  const file = {
+    originalname: "replacement.pdf",
+    mimetype: "application/pdf",
+    size: 28,
+    buffer: Buffer.from("%PDF-1.7\nreplacement body"),
+  };
+  const cloudinary = getCloudinary();
+  const originals = {
+    findById: DeclarationForm.findById,
+    findByIdAndUpdate: DeclarationForm.findByIdAndUpdate,
+    uploadStream: cloudinary.uploader.upload_stream,
+    destroy: cloudinary.uploader.destroy,
+  };
+  const sequence = [];
+  let databaseUpdate;
+
+  DeclarationForm.findById = () => ({
+    select: () => ({ lean: async () => oldAsset }),
+  });
+  DeclarationForm.findByIdAndUpdate = (_id, update) => {
+    databaseUpdate = update;
+    sequence.push("database-updated");
+    return {
+      select: () => ({ lean: async () => ({ _id: id, ...update.$set }) }),
+    };
+  };
+  cloudinary.uploader.upload_stream = (_options, callback) => new Writable({
+    write(_chunk, _encoding, done) {
+      done();
+    },
+    final(done) {
+      sequence.push("new-uploaded");
+      callback(null, replacement);
+      done();
+    },
+  });
+  cloudinary.uploader.destroy = async (publicId, options) => {
+    sequence.push("old-deleted");
+    assert.equal(publicId, oldAsset.publicId);
+    assert.equal(options.resource_type, oldAsset.cloudinaryResourceType);
+    return { result: "ok" };
+  };
+
+  try {
+    const updated = await adminReplaceDeclarationPdf(id, file, "admin-1");
+    assert.equal(updated.publicId, replacement.public_id);
+    assert.equal(updated.fileName, file.originalname);
+    assert.deepEqual(sequence, ["new-uploaded", "database-updated", "old-deleted"]);
+    for (const preserved of [
+      "title",
+      "slug",
+      "category",
+      "visibleTo",
+      "displayOrder",
+      "isPopular",
+      "isActive",
+      "downloadCount",
+    ]) {
+      assert.equal(databaseUpdate.$set[preserved], undefined);
+    }
+  } finally {
+    DeclarationForm.findById = originals.findById;
+    DeclarationForm.findByIdAndUpdate = originals.findByIdAndUpdate;
+    cloudinary.uploader.upload_stream = originals.uploadStream;
+    cloudinary.uploader.destroy = originals.destroy;
   }
 });

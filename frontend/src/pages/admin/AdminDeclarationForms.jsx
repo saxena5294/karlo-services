@@ -13,13 +13,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createAdminDeclarationForm,
   deleteAdminDeclarationForm,
+  downloadAdminDeclarationForm,
   getAdminDeclarationForms,
+  previewAdminDeclarationForm,
   replaceAdminDeclarationFormPdf,
   updateAdminDeclarationForm,
 } from "../../api/declarationFormsApi";
+import PdfPreviewDialog from "../../components/declarations/PdfPreviewDialog";
 import ConfirmDialog from "../../components/dashboard/ConfirmDialog";
 import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
+import { blobErrorMessage, saveBlob } from "../../utils/fileDownload";
 
 const categories = [
   "Identity",
@@ -60,14 +64,6 @@ const validatePdf = (file) => {
   if (file.type !== "application/pdf") return "Only PDF files are allowed.";
   if (file.size > maximumPdfSize) return "PDF must be smaller than 10 MB.";
   return "";
-};
-
-const formatFileSize = (bytes) => {
-  const value = Number(bytes);
-  if (!Number.isFinite(value) || value <= 0) return "Unknown";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 ** 2).toFixed(1)} MB`;
 };
 
 const buildFormData = (values, file) => {
@@ -113,6 +109,14 @@ const AdminDeclarationForms = () => {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [languageFilter, setLanguageFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [visibilityFilter, setVisibilityFilter] = useState("");
+  const [popularFilter, setPopularFilter] = useState("");
+  const [sort, setSort] = useState("display-order");
+  const [preview, setPreview] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState("");
+  const [downloading, setDownloading] = useState("");
 
   const load = async () => {
     setError("");
@@ -140,11 +144,34 @@ const AdminDeclarationForms = () => {
 
   const visibleForms = useMemo(() => (forms || []).filter((form) => {
     const query = search.trim().toLowerCase();
-    return (!query || form.title.toLowerCase().includes(query))
+    return (!query || [form.title, form.category, form.language]
+      .some((value) => String(value || "").toLowerCase().includes(query)))
       && (!categoryFilter || form.category === categoryFilter)
       && (!languageFilter || form.language === languageFilter)
-      && (!statusFilter || String(form.isActive) === statusFilter);
-  }), [forms, search, categoryFilter, languageFilter, statusFilter]);
+      && (!visibilityFilter || form.visibleTo.includes(visibilityFilter))
+      && (!statusFilter || String(form.isActive) === statusFilter)
+      && (!popularFilter || String(form.isPopular) === popularFilter);
+  }).sort((left, right) => {
+    if (sort === "newest") return new Date(right.createdAt) - new Date(left.createdAt);
+    if (sort === "oldest") return new Date(left.createdAt) - new Date(right.createdAt);
+    if (sort === "most-downloaded") return (right.downloadCount || 0) - (left.downloadCount || 0);
+    if (sort === "alphabetical") return left.title.localeCompare(right.title);
+    return (left.displayOrder || 0) - (right.displayOrder || 0)
+      || left.title.localeCompare(right.title);
+  }), [
+    forms,
+    search,
+    categoryFilter,
+    languageFilter,
+    visibilityFilter,
+    statusFilter,
+    popularFilter,
+    sort,
+  ]);
+
+  useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   const closeEditor = () => {
     setEditor(null);
@@ -303,6 +330,46 @@ const AdminDeclarationForms = () => {
     }
   };
 
+  const download = async (form) => {
+    setDownloading(form._id);
+    setError("");
+    setFeedback("");
+    try {
+      const response = await downloadAdminDeclarationForm(form._id);
+      saveBlob(response.data, form.fileName);
+      setFeedback(`${form.title} downloaded successfully.`);
+      await load();
+    } catch (requestError) {
+      setError(await blobErrorMessage(requestError, "Unable to download this form."));
+    } finally {
+      setDownloading("");
+    }
+  };
+
+  const closePreview = () => {
+    setPreview(null);
+    setPreviewError("");
+    setPreviewLoading(false);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+  };
+
+  const openPreview = async (form) => {
+    setPreview(form);
+    setPreviewLoading(true);
+    setPreviewError("");
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    try {
+      const response = await previewAdminDeclarationForm(form._id);
+      setPreviewUrl(URL.createObjectURL(response.data));
+    } catch (requestError) {
+      setPreviewError(await blobErrorMessage(requestError, "Unable to preview this PDF."));
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
@@ -391,11 +458,11 @@ const AdminDeclarationForms = () => {
         </section>
       )}
 
-      <section aria-label="Declaration form filters" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+      <section aria-label="Declaration form filters" className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-4">
         <label className="relative">
-          <span className="sr-only">Search by title</span>
+          <span className="sr-only">Search by title, category, or language</span>
           <Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} />
-          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search by title" className={`${inputClass} mt-0 pl-10`} />
+          <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search title, category, language" className={`${inputClass} mt-0 pl-10`} />
         </label>
         <select aria-label="Filter by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className={`${inputClass} mt-0`}>
           <option value="">All categories</option>
@@ -410,6 +477,38 @@ const AdminDeclarationForms = () => {
           <option value="true">Active</option>
           <option value="false">Inactive</option>
         </select>
+        <select aria-label="Filter by visibility" value={visibilityFilter} onChange={(event) => setVisibilityFilter(event.target.value)} className={`${inputClass} mt-0`}>
+          <option value="">All visibility</option>
+          <option value="customer">Customer</option>
+          <option value="partner">Partner</option>
+        </select>
+        <select aria-label="Filter by popularity" value={popularFilter} onChange={(event) => setPopularFilter(event.target.value)} className={`${inputClass} mt-0`}>
+          <option value="">All popularity</option>
+          <option value="true">Popular</option>
+          <option value="false">Not popular</option>
+        </select>
+        <select aria-label="Sort declaration forms" value={sort} onChange={(event) => setSort(event.target.value)} className={`${inputClass} mt-0`}>
+          <option value="display-order">Display order</option>
+          <option value="newest">Newest</option>
+          <option value="oldest">Oldest</option>
+          <option value="most-downloaded">Most downloaded</option>
+          <option value="alphabetical">Alphabetical</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => {
+            setSearch("");
+            setCategoryFilter("");
+            setLanguageFilter("");
+            setVisibilityFilter("");
+            setStatusFilter("");
+            setPopularFilter("");
+            setSort("display-order");
+          }}
+          className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          Clear filters
+        </button>
       </section>
 
       {!forms ? (
@@ -418,18 +517,17 @@ const AdminDeclarationForms = () => {
         <EmptyState title="No declaration forms found" description={forms.length ? "Try changing the search or filters." : "Upload the first declaration PDF from the admin panel."} />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full min-w-[1180px] text-left text-sm">
+          <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr><th className="p-4">Title</th><th className="p-4">Category</th><th className="p-4">Language</th><th className="p-4">Visibility</th><th className="p-4">File</th><th className="p-4">Downloads</th><th className="p-4">Status</th><th className="p-4">Updated</th><th className="p-4"><span className="sr-only">Actions</span></th></tr>
+              <tr><th className="p-4">Title</th><th className="p-4">Category</th><th className="p-4">Language</th><th className="p-4">Visibility</th><th className="p-4">Downloads</th><th className="p-4">Status</th><th className="p-4">Updated</th><th className="p-4 text-right">Actions</th></tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {visibleForms.map((form) => (
                 <tr key={form._id} className={!form.isActive ? "bg-slate-50 text-slate-500" : ""}>
                   <td className="p-4"><p className="font-bold">{form.title}</p>{form.isPopular && <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><Star size={12} fill="currentColor" /> Popular</span>}</td>
-                  <td className="p-4">{form.category}</td>
+                  <td className="p-4"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{form.category}</span></td>
                   <td className="p-4">{form.language}</td>
-                  <td className="p-4 capitalize">{form.visibleTo.join(", ")}</td>
-                  <td className="p-4"><p className="max-w-48 truncate font-medium" title={form.fileName}>{form.fileName}</p><p className="text-xs text-slate-500">{formatFileSize(form.fileSize)}</p></td>
+                  <td className="p-4"><div className="flex flex-wrap gap-1">{form.visibleTo.map((role) => <span key={role} className="rounded-full bg-violet-50 px-2 py-1 text-xs font-bold capitalize text-violet-700">{role}</span>)}</div></td>
                   <td className="p-4">{Number(form.downloadCount || 0).toLocaleString()}</td>
                   <td className="p-4">
                     <button type="button" disabled={busy} onClick={() => toggleStatus(form, "isActive")} className={`rounded-full px-2.5 py-1 text-xs font-bold disabled:opacity-50 ${form.isActive ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>{form.isActive ? "Active" : "Inactive"}</button>
@@ -437,10 +535,10 @@ const AdminDeclarationForms = () => {
                   <td className="p-4 whitespace-nowrap">{form.updatedAt ? new Date(form.updatedAt).toLocaleDateString() : "—"}</td>
                   <td className="p-4">
                     <div className="flex justify-end gap-2">
-                      <a href={form.fileUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" aria-label={`Preview ${form.title}`}><Eye size={17} /></a>
-                      <a href={form.fileUrl} download={form.fileName} target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" aria-label={`Download ${form.title}`}><Download size={17} /></a>
-                      <button type="button" disabled={busy} onClick={() => startEdit(form)} className="rounded-lg border border-slate-300 p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" aria-label={`Edit ${form.title}`}><FilePenLine size={17} /></button>
-                      <button type="button" disabled={busy} onClick={() => openReplacement(form)} className="rounded-lg border border-slate-300 p-2 text-violet-700 hover:bg-violet-50 disabled:opacity-50" aria-label={`Replace PDF for ${form.title}`}><FileUp size={17} /></button>
+                      <button type="button" onClick={() => openPreview(form)} className="rounded-lg border border-slate-300 p-2 text-slate-700 hover:bg-slate-50" aria-label={`Preview ${form.title}`} title="Preview"><Eye size={17} /></button>
+                      <button type="button" disabled={downloading === form._id} onClick={() => download(form)} className="rounded-lg border border-slate-300 p-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50" aria-label={`Download ${form.title}`} title="Download"><Download size={17} /></button>
+                      <button type="button" disabled={busy} onClick={() => openReplacement(form)} className="rounded-lg border border-slate-300 p-2 text-violet-700 hover:bg-violet-50 disabled:opacity-50" aria-label={`Replace PDF for ${form.title}`} title="Replace PDF"><FileUp size={17} /></button>
+                      <button type="button" disabled={busy} onClick={() => startEdit(form)} className="rounded-lg border border-slate-300 p-2 text-blue-700 hover:bg-blue-50 disabled:opacity-50" aria-label={`Edit ${form.title}`} title="Edit"><FilePenLine size={17} /></button>
                       <button type="button" disabled={busy} onClick={() => toggleStatus(form, "isPopular")} className={`rounded-lg border border-slate-300 p-2 hover:bg-amber-50 disabled:opacity-50 ${form.isPopular ? "text-amber-700" : "text-slate-400"}`} aria-label={`Toggle popular for ${form.title}`}><Star size={17} fill={form.isPopular ? "currentColor" : "none"} /></button>
                       <button type="button" disabled={busy} onClick={() => setDeleteTarget(form)} className="rounded-lg border border-slate-300 p-2 text-rose-700 hover:bg-rose-50 disabled:opacity-50" aria-label={`Delete ${form.title}`}><Trash2 size={17} /></button>
                     </div>
@@ -473,6 +571,19 @@ const AdminDeclarationForms = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {preview && (
+        <PdfPreviewDialog
+          title={preview.title}
+          fileName={preview.fileName}
+          url={previewUrl}
+          loading={previewLoading}
+          error={previewError}
+          downloading={downloading === preview._id}
+          onClose={closePreview}
+          onDownload={() => download(preview)}
+        />
       )}
 
       <ConfirmDialog

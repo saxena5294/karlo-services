@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.use(developmentAuth, requireRole(ROLES.CUSTOMER, ROLES.PARTNER));
 router.get("/", controller.list);
+router.get("/:id/preview", controller.preview);
 router.get("/:id/download", controller.download);
 
 export default router;
-

@@ -44,6 +44,8 @@ router.get("/services/:id/form", controller.serviceForm);
 router.put("/services/:id/form", controller.updateServiceForm);
 router.get("/declaration-forms", declarationFormController.adminList);
 router.post("/declaration-forms", uploadDeclarationPdf, declarationFormController.adminCreate);
+router.get("/declaration-forms/:id/preview", declarationFormController.preview);
+router.get("/declaration-forms/:id/download", declarationFormController.download);
 router.patch("/declaration-forms/:id", declarationFormController.adminUpdate);
 router.patch("/declaration-forms/:id/file", uploadDeclarationPdf, declarationFormController.adminReplaceFile);
 router.delete("/declaration-forms/:id", declarationFormController.adminDelete);

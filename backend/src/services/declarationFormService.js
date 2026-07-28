@@ -3,9 +3,11 @@ import { DeclarationForm, DECLARATION_FORM_AUDIENCES } from "../models/declarati
 import { ApiError } from "../utils/ApiError.js";
 import {
   deleteDeclarationPdf,
+  fetchDeclarationPdf,
   hasPdfSignature,
   uploadDeclarationPdf,
 } from "./declarationPdfStorageService.js";
+import { ROLES } from "../constants/roleConstants.js";
 
 export const DECLARATION_CATEGORIES = Object.freeze([
   "Identity",
@@ -23,8 +25,8 @@ export const DECLARATION_CATEGORIES = Object.freeze([
 ]);
 export const DECLARATION_LANGUAGES = Object.freeze(["English", "Hindi", "Bilingual"]);
 
-const PUBLIC_FIELDS = "_id title slug category description language fileUrl fileName fileType fileSize mimeType isPopular displayOrder";
-const ADMIN_FIELDS = "+createdBy +updatedBy";
+const PUBLIC_FIELDS = "_id title slug category description language fileName fileType fileSize mimeType isPopular displayOrder downloadCount createdAt updatedAt";
+const ADMIN_FIELDS = "_id title slug category description language fileName fileType fileSize mimeType visibleTo displayOrder isPopular isActive downloadCount createdAt updatedAt +createdBy +updatedBy";
 const MAX_PAGE_SIZE = 100;
 const METADATA_FIELDS = [
   "title",
@@ -142,17 +144,40 @@ export const listDeclarationForms = async (role, query = {}) => {
   };
 };
 
-export const getDeclarationDownload = async (id, role) => {
-  if (!mongoose.isValidObjectId(id) || !DECLARATION_FORM_AUDIENCES.includes(role)) {
+const accessFilter = (id, role) => {
+  if (!mongoose.isValidObjectId(id)) {
     throw new ApiError(404, "Declaration form not found");
   }
-  const form = await DeclarationForm.findOneAndUpdate(
-    { _id: id, isActive: true, visibleTo: role },
-    { $inc: { downloadCount: 1 } },
-    { returnDocument: "after" },
-  ).select("fileUrl");
+  if (role === ROLES.ADMIN) return { _id: id };
+  if (!DECLARATION_FORM_AUDIENCES.includes(role)) {
+    throw new ApiError(404, "Declaration form not found");
+  }
+  return { _id: id, isActive: true, visibleTo: role };
+};
+
+export const getDeclarationPdf = async (id, role, attachment = false) => {
+  const form = await DeclarationForm.findOne(accessFilter(id, role))
+    .select("publicId fileName mimeType fileSize cloudinaryResourceType cloudinaryDeliveryType")
+    .lean();
   if (!form) throw new ApiError(404, "Declaration form not found");
-  return form.fileUrl;
+  const buffer = await fetchDeclarationPdf({
+    publicId: form.publicId,
+    resourceType: form.cloudinaryResourceType,
+    deliveryType: form.cloudinaryDeliveryType,
+  }, attachment);
+  return {
+    buffer,
+    fileName: form.fileName,
+    mimeType: form.mimeType || "application/pdf",
+  };
+};
+
+export const recordDeclarationDownload = async (id, role) => {
+  const result = await DeclarationForm.updateOne(
+    accessFilter(id, role),
+    { $inc: { downloadCount: 1 } },
+  );
+  return result.modifiedCount === 1;
 };
 
 const pickMetadata = (payload, partial = false) => {
@@ -204,12 +229,13 @@ const uploadedFileValues = (upload, file) => ({
   fileSize: upload.bytes ?? file.size,
   cloudinaryAssetId: upload.asset_id || "",
   cloudinaryVersion: upload.version,
-  cloudinaryResourceType: upload.resource_type || "raw",
+  cloudinaryResourceType: upload.resource_type || "image",
+  cloudinaryDeliveryType: upload.type || "upload",
 });
 
-const cleanupUploadedPdf = async (publicId, resourceType, context) => {
+const cleanupUploadedPdf = async (publicId, resourceType, deliveryType, context) => {
   try {
-    await deleteDeclarationPdf(publicId, resourceType);
+    await deleteDeclarationPdf(publicId, resourceType, deliveryType);
   } catch (error) {
     console.error(`Declaration PDF ${context} cleanup failed`, {
       publicId,
@@ -240,7 +266,7 @@ export const adminCreateDeclarationForm = async (payload, file, adminId) => {
       updatedBy: adminId,
     });
   } catch (error) {
-    await cleanupUploadedPdf(upload.public_id, upload.resource_type, "create rollback");
+    await cleanupUploadedPdf(upload.public_id, upload.resource_type, upload.type, "create rollback");
     return throwPersistenceError(error);
   }
 };
@@ -266,7 +292,8 @@ export const adminUpdateDeclarationForm = async (id, payload, adminId) => {
 export const adminReplaceDeclarationPdf = async (id, file, adminId) => {
   if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Declaration form not found");
   validatePdf(file, "Declaration PDF is required");
-  const existing = await DeclarationForm.findById(id).select("slug publicId cloudinaryResourceType").lean();
+  const existing = await DeclarationForm.findById(id)
+    .select("slug publicId cloudinaryResourceType cloudinaryDeliveryType").lean();
   if (!existing) throw new ApiError(404, "Declaration form not found");
   const upload = await uploadDeclarationPdf(file, existing.slug);
   let updated;
@@ -278,18 +305,33 @@ export const adminReplaceDeclarationPdf = async (id, file, adminId) => {
     ).select(ADMIN_FIELDS).lean();
     if (!updated) throw new ApiError(404, "Declaration form not found");
   } catch (error) {
-    await cleanupUploadedPdf(upload.public_id, upload.resource_type, "replacement rollback");
+    await cleanupUploadedPdf(
+      upload.public_id,
+      upload.resource_type,
+      upload.type,
+      "replacement rollback",
+    );
     if (error instanceof ApiError) throw error;
     throwPersistenceError(error);
   }
-  await cleanupUploadedPdf(existing.publicId, existing.cloudinaryResourceType, "old asset");
+  await cleanupUploadedPdf(
+    existing.publicId,
+    existing.cloudinaryResourceType,
+    existing.cloudinaryDeliveryType,
+    "old asset",
+  );
   return updated;
 };
 
 export const adminDeleteDeclarationForm = async (id) => {
   if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Declaration form not found");
   const form = await DeclarationForm.findByIdAndDelete(id)
-    .select("publicId cloudinaryResourceType").lean();
+    .select("publicId cloudinaryResourceType cloudinaryDeliveryType").lean();
   if (!form) throw new ApiError(404, "Declaration form not found");
-  await cleanupUploadedPdf(form.publicId, form.cloudinaryResourceType, "hard delete");
+  await cleanupUploadedPdf(
+    form.publicId,
+    form.cloudinaryResourceType,
+    form.cloudinaryDeliveryType,
+    "hard delete",
+  );
 };

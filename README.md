@@ -33,6 +33,12 @@ returned metadata in MongoDB. `npm run legacy:seed-declarations` is retained onl
 manual imports of PDFs that already exist in Cloudinary; it is not part of normal setup
 or application startup.
 
+For production PDF preview and download, enable **Allow delivery of PDF and ZIP files**
+in the Cloudinary product environment Security settings. New declaration PDFs are stored
+as Cloudinary image/PDF assets; existing raw PDF assets remain supported. The application
+delivers both through short-lived, server-generated signed requests, and never exposes
+the Cloudinary API secret or permanent storage URL to dashboard clients.
+
 Install, seed form configurations without replacing existing records, and run:
 
 ```powershell

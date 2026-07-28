@@ -11,6 +11,11 @@ export const downloadDeclarationForm = (id) => API.get(
   { responseType: "blob", timeout: 30000 },
 );
 
+export const previewDeclarationForm = (id) => API.get(
+  `/declaration-forms/${encodeURIComponent(id)}/preview`,
+  { responseType: "blob", timeout: 30000 },
+);
+
 export const getAdminDeclarationForms = (params = {}) => data(
   API.get("/admin/declaration-forms", { params }),
 );
@@ -27,6 +32,16 @@ export const replaceAdminDeclarationFormPdf = (id, payload, onUploadProgress) =>
   API.patch(`/admin/declaration-forms/${encodeURIComponent(id)}/file`, payload, {
     onUploadProgress,
   }),
+);
+
+export const downloadAdminDeclarationForm = (id) => API.get(
+  `/admin/declaration-forms/${encodeURIComponent(id)}/download`,
+  { responseType: "blob", timeout: 30000 },
+);
+
+export const previewAdminDeclarationForm = (id) => API.get(
+  `/admin/declaration-forms/${encodeURIComponent(id)}/preview`,
+  { responseType: "blob", timeout: 30000 },
 );
 
 export const deleteAdminDeclarationForm = (id) => API.delete(
