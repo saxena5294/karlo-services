@@ -27,7 +27,7 @@ const Home = () => {
 
   return (
     <>
-      <SeoMeta defaults={data?.siteSettings?.seo} seo={data?.seo} />
+      <SeoMeta defaults={data?.siteSettings?.seo || {}} seo={data?.seo || {}} />
       <NoticeBar notices={data?.notices} />
       {loading && <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-slate-500">Loading the latest content…</div>}
       {error && <div className="mx-auto max-w-7xl px-4 py-3 text-sm text-amber-700">{error} Showing the standard homepage.</div>}

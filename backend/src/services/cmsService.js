@@ -39,7 +39,7 @@ export const getPublicHomepage = async () => {
   const curated = featuredIds.map((id) => byId.get(String(id))).filter(Boolean);
   const merged = [...curated, ...popularServices.filter((item) => !curated.some(({ _id }) => String(_id) === String(item._id)))].slice(0, popularLimit);
   const safeSettings = settings ? { ...settings, logo: publicImage(settings.logo), seo: { ...settings.seo, defaultImage: publicImage(settings.seo?.defaultImage) } } : {};
-  return { hero: homepage ? { ...homepage.hero, image: publicImage(homepage.hero?.image) } : {}, banners, featuredServices: merged.map(normalizeServiceForClient), testimonials, faqs, categories, notices, featuredBlogs: featuredBlogs.items, seo, siteSettings: safeSettings, sectionVisibility: homepage?.sectionVisibility || {}, sectionOrder: homepage?.sectionOrder || [] };
+  return { hero: homepage ? { ...homepage.hero, image: publicImage(homepage.hero?.image) } : {}, banners, featuredServices: merged.map(normalizeServiceForClient), testimonials, faqs, categories, notices, featuredBlogs: featuredBlogs.items, seo: seo || {}, siteSettings: safeSettings, sectionVisibility: homepage?.sectionVisibility || {}, sectionOrder: homepage?.sectionOrder || [] };
 };
 export const buildPublicBannerFilter = (now = new Date(), position = "homepage") => ({ position, status: "published", isActive: true, deletedAt: null, $and: [{ $or: [{ startAt: null }, { startAt: { $lte: now } }] }, { $or: [{ endAt: null }, { endAt: { $gt: now } }] }] });
 
