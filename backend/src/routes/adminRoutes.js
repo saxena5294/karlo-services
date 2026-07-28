@@ -4,7 +4,7 @@ import { developmentAuth, requireRole } from "../middlewares/developmentAuthMidd
 import { ROLES } from "../constants/roleConstants.js";
 import { requireLeadMarketplace } from "../middlewares/featureFlagMiddleware.js";
 import * as declarationFormController from "../controllers/declarationFormController.js";
-import { uploadDeclarationPdf } from "../middlewares/uploadMiddleware.js";
+import { uploadCmsImage, uploadDeclarationPdf } from "../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
 
@@ -40,6 +40,7 @@ router.post("/services", controller.createService);
 router.get("/services/:id", controller.serviceDetails);
 router.patch("/services/:id", controller.updateService);
 router.patch("/services/:id/status", controller.updateServiceStatus);
+router.patch("/services/:id/image", uploadCmsImage, controller.replaceServiceImage);
 router.get("/services/:id/form", controller.serviceForm);
 router.put("/services/:id/form", controller.updateServiceForm);
 router.get("/declaration-forms", declarationFormController.adminList);

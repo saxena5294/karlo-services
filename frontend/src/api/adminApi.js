@@ -25,6 +25,7 @@ export const createService = (data) => getData(API.post("/admin/services", data)
 export const getAdminService = (id) => getData(API.get(`/admin/services/${encodeURIComponent(id)}`));
 export const updateService = (id, data) => getData(API.patch(`/admin/services/${encodeURIComponent(id)}`, data));
 export const updateServiceStatus = (id, data) => getData(API.patch(`/admin/services/${encodeURIComponent(id)}/status`, data));
+export const replaceServiceImage = (id, data) => getData(API.patch(`/admin/services/${encodeURIComponent(id)}/image`, data));
 export const getServiceForm = (id) => getData(API.get(`/admin/services/${encodeURIComponent(id)}/form`));
 export const updateServiceForm = (id, data) => getData(API.put(`/admin/services/${encodeURIComponent(id)}/form`, data));
 export const getAdminReports = () => getData(API.get("/admin/reports/summary"));

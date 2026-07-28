@@ -52,8 +52,10 @@ const normalizePricing = (pricing) => {
 const serviceSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   slug: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  shortDescription: { type: String, trim: true, maxlength: 500, default: "" },
   description: { type: String, required: true, trim: true },
-  icon: { type: String, default: "Document" }, image: { type: String, trim: true, default: "" },
+  icon: { type: String, default: "Document" }, image: { type: String, trim: true, default: "" }, imagePublicId: { type: String, trim: true, default: "", select: false },
+  seoTitle: { type: String, trim: true, maxlength: 180, default: "" }, seoDescription: { type: String, trim: true, maxlength: 500, default: "" }, seoKeywords: { type: [String], default: [] },
   price: { type: Number, min: 0, default: 0 }, pricing: { type: pricingSchema, default: () => ({}) },
   processingTime: { type: String, trim: true, default: "Contact support" }, estimatedProcessingTime: { type: estimatedProcessingTimeSchema, default: () => ({}) },
   processingTimeOverride: { type: String, trim: true, maxlength: 200, default: "" },

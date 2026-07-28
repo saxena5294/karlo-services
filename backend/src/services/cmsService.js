@@ -8,28 +8,38 @@ import { ApiError } from "../utils/ApiError.js";
 import { hasAllowedFileSignature, removeUploadedFiles, uploadBuffer } from "./applicationService.js";
 import { assertObjectId, cleanEnum, cleanText } from "./cmsValidation.js";
 import { FAQ_AUDIENCES, FAQ_CATEGORIES } from "../models/faqModel.js";
+import { getPublicCategories, getPublicNotices, listPublicBlogs } from "./cmsExtendedService.js";
+import { PageSeo } from "../models/pageSeoModel.js";
 
-export const defaultHomepage = { key: "homepage", hero: { heading: "Government and digital services, made simple.", subheading: "Apply for trusted services from one secure platform.", primaryButton: { text: "Explore Services", link: "/services" }, secondaryButton: { text: "Track Application", link: "/track" }, image: { url: "", publicId: "" }, isActive: true }, featuredServiceIds: [], sectionVisibility: Object.fromEntries(HOMEPAGE_SECTIONS.map((key) => [key, true])), sectionOrder: [...HOMEPAGE_SECTIONS], status: "draft", publishedAt: null };
+export const defaultHomepage = { key: "homepage", hero: { eyebrow: "Trusted digital service platform", heading: "Government and digital services, made simple.", highlightedText: "made simple.", subheading: "Apply for trusted services from one secure platform.", primaryButton: { text: "Explore Services", link: "/services" }, secondaryButton: { text: "Track Application", link: "/track" }, image: { url: "", publicId: "" }, trustText: "", stats: [{ value: "50+", label: "Services" }, { value: "10K+", label: "Applications" }, { value: "24/7", label: "Tracking" }], isActive: true }, featuredServiceIds: [], popularServicesLimit: 6, sectionVisibility: Object.fromEntries(HOMEPAGE_SECTIONS.map((key) => [key, true])), sectionOrder: [...HOMEPAGE_SECTIONS], status: "draft", publishedAt: null };
 export const defaultSettings = { key: "main-settings", siteName: "Karlo Services", logo: { url: "", publicId: "", altText: "Karlo Services" }, contact: {}, socialLinks: {}, footer: { shortDescription: "Your trusted platform for government, financial and digital services.", copyrightText: "Karlo Services. All rights reserved.", supportText: "" }, legal: { serviceDisclaimer: "Karlo Services assists with preparing and submitting applications based on the information and documents provided by the customer. Final approval, verification, objection, rejection and processing time are determined by the concerned government department, portal or third-party authority.", refundDisclaimer: "Government fees or portal payments may be subject to the refund rules of the concerned authority. Karlo Services service charges may be non-refundable after processing has started, subject to the applicable refund policy." }, seo: { defaultKeywords: [], defaultImage: {} } };
-export const getAdminHomepage = async () => { const homepage = await Homepage.findOneAndUpdate({ key: "homepage" }, { $setOnInsert: defaultHomepage }, { new: true, upsert: true, setDefaultsOnInsert: true }); if (homepage.status === "published" && !homepage.publishedSnapshot) { homepage.publishedSnapshot = { hero: homepage.hero.toObject(), featuredServiceIds: homepage.featuredServiceIds.map(String), sectionVisibility: homepage.sectionVisibility.toObject(), sectionOrder: [...homepage.sectionOrder] }; await homepage.save(); } return homepage; };
+export const getAdminHomepage = async () => { const homepage = await Homepage.findOneAndUpdate({ key: "homepage" }, { $setOnInsert: defaultHomepage }, { new: true, upsert: true, setDefaultsOnInsert: true }); if (homepage.status === "published" && !homepage.publishedSnapshot) { homepage.publishedSnapshot = { hero: homepage.hero.toObject(), featuredServiceIds: homepage.featuredServiceIds.map(String), popularServicesLimit: homepage.popularServicesLimit, sectionVisibility: homepage.sectionVisibility.toObject(), sectionOrder: [...homepage.sectionOrder] }; await homepage.save(); } return homepage; };
 export const getAdminSettings = () => SiteSettings.findOneAndUpdate({ key: "main-settings" }, { $setOnInsert: defaultSettings }, { new: true, upsert: true, setDefaultsOnInsert: true });
 
 const publicImage = (image) => image?.url ? { url: image.url, ...(image.altText ? { altText: image.altText } : {}) } : {};
 export const getPublicHomepage = async () => {
   const now = new Date();
-  const homepageRecord = await Homepage.findOne({ key: "homepage", $or: [{ status: "published" }, { publishedSnapshot: { $ne: null } }] }).select("hero featuredServiceIds sectionVisibility sectionOrder status publishedSnapshot").lean();
+  const homepageRecord = await Homepage.findOne({ key: "homepage", $or: [{ status: "published" }, { publishedSnapshot: { $ne: null } }] }).select("hero featuredServiceIds popularServicesLimit sectionVisibility sectionOrder status publishedSnapshot").lean();
   const homepage = homepageRecord?.publishedSnapshot || (homepageRecord?.status === "published" ? homepageRecord : null);
   const featuredIds = homepage?.featuredServiceIds || [];
-  const [banners, featuredServices, testimonials, faqs, settings] = await Promise.all([
+  const popularLimit = homepage?.popularServicesLimit || 6;
+  const [banners, curatedServices, popularServices, testimonials, faqs, settings, categories, notices, featuredBlogs, seo] = await Promise.all([
     Banner.find(buildPublicBannerFilter(now)).select("title description image.url buttonText buttonLink position order startAt endAt").sort({ order: 1, createdAt: 1 }).lean(),
     Service.find({ _id: { $in: featuredIds }, isActive: true }).select("title slug description icon price pricing processingTime estimatedProcessingTime category subcategory isPopular availabilityStatus availabilityMessage").lean(),
+    Service.find({ isPopular: true, isActive: true, migrationStatus: { $ne: "migrated" } }).select("title slug description icon image price pricing processingTime estimatedProcessingTime category subcategory isPopular availabilityStatus availabilityMessage").sort({ displayOrder: 1, createdAt: -1 }).limit(popularLimit).lean(),
     Testimonial.find({ status: "published", isActive: true, deletedAt: null }).select("customerName customerRole message rating image.url serviceId order").populate("serviceId", "title slug").sort({ order: 1, createdAt: 1 }).lean(),
     FAQ.find({ status: "published", isActive: true, deletedAt: null, $or: [{ audience: "public" }, { audience: { $exists: false } }] }).select("question answer category displayOrder order isFeatured audience keywords").sort({ isFeatured: -1, displayOrder: 1, order: 1, createdAt: 1 }).limit(8).lean(),
-    SiteSettings.findOne({ key: "main-settings" }).select("siteName logo contact socialLinks footer legal seo").lean(),
+    SiteSettings.findOne({ key: "main-settings" }).select("siteName shortSiteName tagline logo general contact socialLinks footer footerSections legal seo").lean(),
+    getPublicCategories(),
+    getPublicNotices(),
+    listPublicBlogs({ featured: "true", limit: 3 }),
+    PageSeo.findOne({ pageKey: "homepage", isActive: true }).select("-updatedBy").lean(),
   ]);
-  const byId = new Map(featuredServices.map((item) => [String(item._id), item]));
+  const byId = new Map(curatedServices.map((item) => [String(item._id), item]));
+  const curated = featuredIds.map((id) => byId.get(String(id))).filter(Boolean);
+  const merged = [...curated, ...popularServices.filter((item) => !curated.some(({ _id }) => String(_id) === String(item._id)))].slice(0, popularLimit);
   const safeSettings = settings ? { ...settings, logo: publicImage(settings.logo), seo: { ...settings.seo, defaultImage: publicImage(settings.seo?.defaultImage) } } : {};
-  return { hero: homepage ? { ...homepage.hero, image: publicImage(homepage.hero?.image) } : {}, banners, featuredServices: featuredIds.map((id) => byId.get(String(id))).filter(Boolean).map(normalizeServiceForClient), testimonials, faqs, siteSettings: safeSettings, sectionVisibility: homepage?.sectionVisibility || {}, sectionOrder: homepage?.sectionOrder || [] };
+  return { hero: homepage ? { ...homepage.hero, image: publicImage(homepage.hero?.image) } : {}, banners, featuredServices: merged.map(normalizeServiceForClient), testimonials, faqs, categories, notices, featuredBlogs: featuredBlogs.items, seo, siteSettings: safeSettings, sectionVisibility: homepage?.sectionVisibility || {}, sectionOrder: homepage?.sectionOrder || [] };
 };
 export const buildPublicBannerFilter = (now = new Date(), position = "homepage") => ({ position, status: "published", isActive: true, deletedAt: null, $and: [{ $or: [{ startAt: null }, { startAt: { $lte: now } }] }, { $or: [{ endAt: null }, { endAt: { $gt: now } }] }] });
 
@@ -76,17 +86,24 @@ export const replaceCmsImage = async ({ file, folder, oldImage, update }) => {
   if (!file) throw new ApiError(400, "Image file is required");
   if (!hasAllowedFileSignature(file)) throw new ApiError(400, "Image content is not a valid JPG, PNG, or WEBP file");
   let uploaded;
+  uploaded = await uploadBuffer(file, "cms", folder, { deliveryType: "upload" });
+  let document;
   try {
-    uploaded = await uploadBuffer(file, "cms", folder, { deliveryType: "upload" });
     const image = { url: uploaded.secure_url, publicId: uploaded.public_id };
-    const document = await update(image);
+    document = await update(image);
     if (!document) throw new ApiError(404, "CMS record not found");
-    if (oldImage?.publicId) await removeUploadedFiles([{ publicId: oldImage.publicId, resourceType: "image" }]);
-    return document;
   } catch (error) {
     if (uploaded?.public_id) await removeUploadedFiles([{ publicId: uploaded.public_id, resourceType: "image" }]);
     throw error;
   }
+  if (oldImage?.publicId) {
+    try {
+      await removeUploadedFiles([{ publicId: oldImage.publicId, resourceType: "image" }]);
+    } catch (error) {
+      console.error("CMS old image cleanup failed", { publicId: oldImage.publicId, reason: error?.message || "Unknown error" });
+    }
+  }
+  return document;
 };
 
 const entityConfig = {

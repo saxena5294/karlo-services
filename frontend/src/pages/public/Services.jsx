@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "../../components/common/PageHeader";
 import ServiceCard from "../../components/home/ServiceCard";
 import { getAllServices } from "../../api/serviceApi";
+import CmsSeo from "../../components/common/CmsSeo";
 
 const Services = () => {
   const [services, setServices] = useState([]);
@@ -26,6 +27,7 @@ const Services = () => {
 
   return (
     <>
+      <CmsSeo pageKey="services" />
       <PageHeader eyebrow="Explore" title="All services" description="Choose a service, review its details, and submit one secure online application." />
       <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <label className="block max-w-xl">

@@ -1,11 +1,13 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createService, getAdminService, getServiceForm, updateService, updateServiceForm } from "../../api/adminApi";
+import { createService, getAdminService, getServiceForm, replaceServiceImage, updateService, updateServiceForm } from "../../api/adminApi";
+import { categoryApi } from "../../api/adminCmsApi";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import { formatINR } from "../../utils/servicePresentation";
 
 const emptyService = {
+  shortDescription: "", image: "", seoTitle: "", seoDescription: "", seoKeywords: [],
   title: "", slug: "", description: "", icon: "📄", category: "", subcategory: "", dashboardCategory: "other-services", fulfillmentType: "internal",
   pricing: { governmentFee: 0, serviceCharge: 0, totalAmount: 0, pricingMode: "fixed", pricingNote: "", requiresAdminReview: false },
   estimatedProcessingTime: { value: "", unit: "days", displayText: "" },
@@ -33,8 +35,11 @@ const AdminServiceForm = () => {
   const [service, setService] = useState(emptyService); const [form, setForm] = useState({ title: "Application form", description: "", sections: [], fields: [emptyField()], isActive: true });
   const [listText, setListText] = useState({ requiredDocuments: "", eligibility: "", instructions: "" });
   const [loading, setLoading] = useState(editing); const [saving, setSaving] = useState(false); const [feedback, setFeedback] = useState({ type: "", message: "" });
+  const [categories, setCategories] = useState([]); const [serviceImage, setServiceImage] = useState(null); const [seoKeywords, setSeoKeywords] = useState("");
 
-  useEffect(() => { if (!editing) return undefined; let active = true; Promise.all([getAdminService(id), getServiceForm(id)]).then(([serviceResponse, formResponse]) => { if (active) { const loaded = serviceResponse.service; const variants = (loaded.variants || []).map((variant) => ({ ...emptyVariant(), ...variant, pricing: { ...emptyVariant().pricing, ...variant.pricing }, processingTime: { ...emptyVariant().processingTime, ...variant.processingTime, value: variant.processingTime?.value ?? "" }, _documentsText: toLines(variant.requiredDocuments), _keywordsText: toLines(variant.keywords), _fieldsText: variant.formConfiguration?.fields ? JSON.stringify(variant.formConfiguration.fields, null, 2) : "" })); setService({ ...emptyService, ...loaded, variants, pricing: { ...emptyService.pricing, ...loaded.pricing }, estimatedProcessingTime: { ...emptyService.estimatedProcessingTime, ...loaded.estimatedProcessingTime, value: loaded.estimatedProcessingTime?.value ?? "" } }); setListText({ requiredDocuments: toLines(loaded.requiredDocuments), eligibility: toLines(loaded.eligibility), instructions: toLines(loaded.instructions) }); if (formResponse.form) setForm(formResponse.form); setLoading(false); } }).catch((error) => { if (active) { setFeedback({ type: "error", message: error.response?.data?.message || "Unable to load service." }); setLoading(false); } }); return () => { active = false; }; }, [editing, id]);
+  useEffect(() => { categoryApi.list({ limit: 100, isActive: true }).then((response) => setCategories(response.data.items || [])).catch(() => setCategories([])); }, []);
+
+  useEffect(() => { if (!editing) return undefined; let active = true; Promise.all([getAdminService(id), getServiceForm(id)]).then(([serviceResponse, formResponse]) => { if (active) { const loaded = serviceResponse.service; const variants = (loaded.variants || []).map((variant) => ({ ...emptyVariant(), ...variant, pricing: { ...emptyVariant().pricing, ...variant.pricing }, processingTime: { ...emptyVariant().processingTime, ...variant.processingTime, value: variant.processingTime?.value ?? "" }, _documentsText: toLines(variant.requiredDocuments), _keywordsText: toLines(variant.keywords), _fieldsText: variant.formConfiguration?.fields ? JSON.stringify(variant.formConfiguration.fields, null, 2) : "" })); setService({ ...emptyService, ...loaded, variants, pricing: { ...emptyService.pricing, ...loaded.pricing }, estimatedProcessingTime: { ...emptyService.estimatedProcessingTime, ...loaded.estimatedProcessingTime, value: loaded.estimatedProcessingTime?.value ?? "" } }); setSeoKeywords((loaded.seoKeywords || []).join(", ")); setListText({ requiredDocuments: toLines(loaded.requiredDocuments), eligibility: toLines(loaded.eligibility), instructions: toLines(loaded.instructions) }); if (formResponse.form) setForm(formResponse.form); setLoading(false); } }).catch((error) => { if (active) { setFeedback({ type: "error", message: error.response?.data?.message || "Unable to load service." }); setLoading(false); } }); return () => { active = false; }; }, [editing, id]);
 
   const total = useMemo(() => service.pricing.pricingMode === "free" ? 0 : Number(service.pricing.governmentFee || 0) + Number(service.pricing.serviceCharge || 0), [service.pricing.governmentFee, service.pricing.pricingMode, service.pricing.serviceCharge]);
   const setPricing = (key, value) => setService((current) => ({ ...current, pricing: { ...current.pricing, [key]: value } }));
@@ -49,7 +54,7 @@ const AdminServiceForm = () => {
       const mode = service.pricing.pricingMode;
       if (!["fixed", "free"].includes(mode) && !service.pricing.pricingNote.trim()) throw new Error("Pricing note is required for variable, portal, and contact-support pricing.");
       const payload = {
-        title: service.title, slug: service.slug, description: service.description, icon: service.icon, category: service.category, subcategory: service.subcategory,
+        title: service.title, slug: service.slug, shortDescription: service.shortDescription, description: service.description, icon: service.icon, category: service.category, subcategory: service.subcategory, seoTitle: service.seoTitle, seoDescription: service.seoDescription, seoKeywords: seoKeywords.split(",").map((item) => item.trim()).filter(Boolean),
         dashboardCategory: service.dashboardCategory || "other-services", fulfillmentType: service.fulfillmentType || "internal", isPopular: service.isPopular, isFeatured: service.isFeatured, displayOrder: Number(service.displayOrder || 0), processingTimeOverride: service.processingTimeOverride, variantSelectionLabel: service.variantSelectionLabel,
         pricing: { ...service.pricing, governmentFee: Number(service.pricing.governmentFee || 0), serviceCharge: Number(service.pricing.serviceCharge || 0), totalAmount: -1, requiresAdminReview: false },
         estimatedProcessingTime: { ...service.estimatedProcessingTime, value: service.estimatedProcessingTime.value === "" ? null : Number(service.estimatedProcessingTime.value) },
@@ -57,9 +62,11 @@ const AdminServiceForm = () => {
         requiredDocuments: fromLines(listText.requiredDocuments), eligibility: fromLines(listText.eligibility), instructions: fromLines(listText.instructions),
         variants: service.variants.map(serializeVariant),
       };
-      if (!editing) { const response = await createService(payload); navigate(`/admin/services/${response.service._id}/edit`, { replace: true }); return; }
-      await updateService(id, payload);
-      await updateServiceForm(id, { title: form.title, description: form.description, sections: form.sections, fields: form.fields.map((field) => { const cleanField = { ...field }; delete cleanField._id; return cleanField; }), isActive: form.isActive });
+      const serviceId = editing ? id : (await createService(payload)).service._id;
+      if (editing) await updateService(id, payload);
+      if (serviceImage) { const imageData = new FormData(); imageData.append("image", serviceImage); await replaceServiceImage(serviceId, imageData); setServiceImage(null); }
+      if (!editing) { navigate(`/admin/services/${serviceId}/edit`, { replace: true }); return; }
+      await updateServiceForm(serviceId, { title: form.title, description: form.description, sections: form.sections, fields: form.fields.map((field) => { const cleanField = { ...field }; delete cleanField._id; return cleanField; }), isActive: form.isActive });
       setService((current) => ({ ...current, pricing: { ...current.pricing, totalAmount: total, requiresAdminReview: false } }));
       setFeedback({ type: "success", message: "Service pricing, availability, and dynamic form saved." });
     } catch (error) { setFeedback({ type: "error", message: error.response?.data?.message || error.message || "Unable to save service." }); } finally { setSaving(false); }
@@ -68,6 +75,16 @@ const AdminServiceForm = () => {
   if (loading) return <LoadingSkeleton count={6} />;
   return <form onSubmit={save} className="space-y-6">
     {feedback.message && <p role={feedback.type === "error" ? "alert" : "status"} className={`rounded-xl px-4 py-3 text-sm ${feedback.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{feedback.message}</p>}
+
+    <section className="grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 md:grid-cols-2">
+      <h2 className="text-xl font-bold md:col-span-2">CMS presentation and SEO</h2>
+      <label className="text-sm font-semibold">Managed category<select required value={service.category} onChange={(event) => setService({ ...service, category: event.target.value })} className={inputClass}><option value="">Select category</option>{categories.map((category) => <option key={category._id} value={category.name}>{category.name}</option>)}{service.category && !categories.some(({ name }) => name === service.category) && <option value={service.category}>{service.category} (legacy)</option>}</select></label>
+      <label className="text-sm font-semibold">Upload/replace image<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setServiceImage(event.target.files?.[0] || null)} className={inputClass}/></label>
+      <label className="text-sm font-semibold md:col-span-2">Short description<textarea rows="2" maxLength="500" value={service.shortDescription || ""} onChange={(event) => setService({ ...service, shortDescription: event.target.value })} className={inputClass}/></label>
+      <label className="text-sm font-semibold">SEO title<input maxLength="180" value={service.seoTitle || ""} onChange={(event) => setService({ ...service, seoTitle: event.target.value })} className={inputClass}/></label>
+      <label className="text-sm font-semibold">SEO keywords<input value={seoKeywords} onChange={(event) => setSeoKeywords(event.target.value)} placeholder="pan, identity, application" className={inputClass}/></label>
+      <label className="text-sm font-semibold md:col-span-2">SEO description<textarea rows="3" maxLength="500" value={service.seoDescription || ""} onChange={(event) => setService({ ...service, seoDescription: event.target.value })} className={inputClass}/></label>
+    </section>
 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><h2 className="text-xl font-bold">Catalog placement</h2><div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={service.isFeatured} onChange={(event) => setService({ ...service, isFeatured: event.target.checked })} /> Featured parent service</label><label className="text-sm font-semibold">Display order<input min="0" type="number" value={service.displayOrder || 0} onChange={(event) => setService({ ...service, displayOrder: event.target.value })} className={inputClass} /></label><label className="text-sm font-semibold">Processing summary override<input value={service.processingTimeOverride || ""} onChange={(event) => setService({ ...service, processingTimeOverride: event.target.value })} placeholder="Optional" className={inputClass} /></label><label className="text-sm font-semibold">Variant selector heading<input maxLength="100" value={service.variantSelectionLabel || ""} onChange={(event) => setService({ ...service, variantSelectionLabel: event.target.value })} placeholder="Choose Service Type" className={inputClass} /></label></div></section>
 

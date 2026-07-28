@@ -53,6 +53,8 @@ const ServiceDetails = page(() => import("./pages/public/ServiceDetails"));
 const Services = page(() => import("./pages/public/Services"));
 const TrackApplication = page(() => import("./pages/public/TrackApplication"));
 const FaqPage = page(() => import("./pages/public/FaqPage"));
+const Blogs = page(() => import("./pages/public/Blogs"));
+const BlogDetails = page(() => import("./pages/public/BlogDetails"));
 const RefundPolicy = page(() => import("./pages/public/RefundPolicy"));
 const PartnerDashboard = page(() => import("./pages/partner/PartnerDashboard"));
 const PartnerLeadDetails = page(() => import("./pages/partner/PartnerLeadDetails"));
@@ -74,6 +76,8 @@ const AppRoutes = () => (
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
       <Route path="/faq" element={<FaqPage />} />
+      <Route path="/blogs" element={<Blogs />} />
+      <Route path="/blogs/:slug" element={<BlogDetails />} />
       <Route path="/refund-policy" element={<RefundPolicy />} />
       <Route path="/login" element={<AuthPlaceholder mode="login" />} />
       <Route path="/register" element={<AuthPlaceholder mode="register" />} />

@@ -10,6 +10,13 @@ const PublicLayout = () => {
   return (
   <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
     <Navbar />
+    {cms.data?.siteSettings?.general?.announcementBar?.isActive && cms.data.siteSettings.general.announcementBar.text && (
+      <div className="bg-blue-700 px-4 py-2 text-center text-sm font-semibold text-white">
+        {cms.data.siteSettings.general.announcementBar.link
+          ? <a href={cms.data.siteSettings.general.announcementBar.link} className="underline">{cms.data.siteSettings.general.announcementBar.text}</a>
+          : cms.data.siteSettings.general.announcementBar.text}
+      </div>
+    )}
     <main className="flex-1">
     <Outlet context={cms} />
     </main>

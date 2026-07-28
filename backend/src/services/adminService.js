@@ -18,6 +18,7 @@ import {
   updateApplicationStatus,
 } from "./applicationService.js";
 import { sanitizeNotificationText } from "./notificationService.js";
+import { replaceCmsImage } from "./cmsService.js";
 
 const DEFAULT_LIMIT = 20;
 const TERMINAL_STATUSES = ["Completed", "Rejected", "Cancelled", "completed", "rejected"];
@@ -260,7 +261,7 @@ export const updateExpertProfile = async (id, payload) => {
   return expert;
 };
 
-const SERVICE_FIELDS = ["title", "slug", "description", "icon", "image", "price", "pricing", "processingTime", "estimatedProcessingTime", "processingTimeOverride", "variantSelectionLabel", "category", "subcategory", "dashboardCategory", "availabilityStatus", "availabilityMessage", "fulfillmentType", "isPopular", "isFeatured", "isActive", "displayOrder", "keywords", "requiredDocuments", "eligibility", "instructions", "variants"];
+const SERVICE_FIELDS = ["title", "slug", "shortDescription", "description", "icon", "image", "price", "pricing", "processingTime", "estimatedProcessingTime", "processingTimeOverride", "variantSelectionLabel", "category", "subcategory", "dashboardCategory", "availabilityStatus", "availabilityMessage", "fulfillmentType", "isPopular", "isFeatured", "isActive", "displayOrder", "keywords", "requiredDocuments", "eligibility", "instructions", "variants", "seoTitle", "seoDescription", "seoKeywords"];
 
 const compatibilityPayload = (payload) => {
   const next = { ...payload };
@@ -328,6 +329,23 @@ export const updateAdminServiceStatus = async (id, payload) => {
   const service = await Service.findByIdAndUpdate(id, { isActive: payload.isActive }, { returnDocument: "after", runValidators: true }).lean();
   if (!service) throw new ApiError(404, "Service not found");
   return service;
+};
+
+export const replaceAdminServiceImage = async (id, file) => {
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Service not found");
+  const service = await Service.findById(id).select("+imagePublicId");
+  if (!service) throw new ApiError(404, "Service not found");
+  return replaceCmsImage({
+    file,
+    folder: "services",
+    oldImage: { url: service.image, publicId: service.imagePublicId },
+    update: async (image) => {
+      service.image = image.url;
+      service.imagePublicId = image.publicId;
+      await service.save();
+      return normalizeServiceForClient(service, { includeInactiveVariants: true });
+    },
+  });
 };
 
 export const getAdminServiceForm = async (serviceId) => {

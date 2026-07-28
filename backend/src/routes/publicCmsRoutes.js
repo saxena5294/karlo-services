@@ -1,3 +1,13 @@
 import express from "express";
 import { getPublicDashboardContent, getPublicFaqs, getPublicHomepage } from "../controllers/cms/publicCmsController.js";
-const router = express.Router(); router.get("/homepage", getPublicHomepage); router.get("/dashboard", getPublicDashboardContent); router.get("/faqs", getPublicFaqs); export default router;
+import { publicBlog, publicBlogs, publicCategories, publicNotices, publicSeo } from "../controllers/cms/extendedCmsController.js";
+const router = express.Router();
+router.get("/homepage", getPublicHomepage);
+router.get("/dashboard", getPublicDashboardContent);
+router.get("/faqs", getPublicFaqs);
+router.get("/categories", publicCategories);
+router.get("/notices", publicNotices);
+router.get("/blogs", publicBlogs);
+router.get("/blogs/:slug", publicBlog);
+router.get("/seo/:pageKey", publicSeo);
+export default router;

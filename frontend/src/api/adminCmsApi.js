@@ -3,7 +3,7 @@ const data = (request) => request.then((response) => response.data);
 const id = (value) => encodeURIComponent(value);
 export const getHomepageAdminContent = () => data(API.get("/admin/cms/homepage"));
 export const updateHomepageHero = (payload) => data(API.patch("/admin/cms/homepage/hero", payload));
-export const updateFeaturedServices = (featuredServiceIds) => data(API.patch("/admin/cms/homepage/featured-services", { featuredServiceIds }));
+export const updateFeaturedServices = (featuredServiceIds, popularServicesLimit) => data(API.patch("/admin/cms/homepage/featured-services", { featuredServiceIds, popularServicesLimit }));
 export const updateHomepageSections = (payload) => data(API.patch("/admin/cms/homepage/sections", payload));
 export const publishHomepage = () => data(API.post("/admin/cms/homepage/publish", {}));
 export const getSiteSettings = () => data(API.get("/admin/cms/site-settings"));
@@ -20,6 +20,7 @@ const collection = (name) => ({
   order: (value, order) => data(API.patch(`/admin/cms/${name}/${id(value)}/order`, { order })),
 });
 export const bannerApi = collection("banners"), faqApi = collection("faqs"), testimonialApi = collection("testimonials");
+export const categoryApi = collection("categories"), noticeApi = collection("notices"), blogApi = collection("blogs"), seoApi = collection("seo");
 export const getBanners = bannerApi.list, createBanner = bannerApi.create, updateBanner = bannerApi.update, deleteBanner = bannerApi.remove, updateBannerStatus = bannerApi.status, reorderBanner = bannerApi.order;
 export const getFaqs = faqApi.list, createFaq = faqApi.create, updateFaq = faqApi.update, deleteFaq = faqApi.remove, updateFaqStatus = faqApi.status, reorderFaq = faqApi.order;
 export const getTestimonials = testimonialApi.list, createTestimonial = testimonialApi.create, updateTestimonial = testimonialApi.update, deleteTestimonial = testimonialApi.remove, updateTestimonialStatus = testimonialApi.status, reorderTestimonial = testimonialApi.order;
