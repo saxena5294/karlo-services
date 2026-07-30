@@ -1,6 +1,6 @@
-import { Download, Expand, Eye, FileText, RefreshCw, Upload, X } from "lucide-react";
+import { Download, Expand, Eye, FileText, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { getApplicationDocuments, getDocumentDownload, getDocumentPreview, updateDocumentVerification, uploadDocumentReplacement } from "../../api/documentApi";
+import { deleteApplicationDocument, getApplicationDocuments, getDocumentDownload, getDocumentPreview, updateDocumentVerification, uploadAdditionalDocument, uploadDocumentReplacement } from "../../api/documentApi";
 import { formatDate, formatFileSize } from "../../utils/dashboardFormatters";
 
 const statusStyle = {
@@ -22,6 +22,7 @@ const DocumentViewer = ({ applicationId, title = "Application documents" }) => {
   const [busyId, setBusyId] = useState("");
   const [review, setReview] = useState(null);
   const [uploadProgress, setUploadProgress] = useState({});
+  const [additional, setAdditional] = useState({ label: "", file: null });
 
   const load = useCallback(async () => {
     setError("");
@@ -72,8 +73,30 @@ const DocumentViewer = ({ applicationId, title = "Application documents" }) => {
     finally { setBusyId(""); }
   };
 
+  const uploadAdditional = async (event) => {
+    event.preventDefault();
+    if (!additional.file || !additional.label.trim()) return;
+    setBusyId("additional"); setFeedback("");
+    try {
+      await uploadAdditionalDocument(applicationId, additional.file, additional.label.trim());
+      setAdditional({ label: "", file: null });
+      setFeedback("Additional document uploaded.");
+      await load();
+    } catch (requestError) { setFeedback(requestError.response?.data?.message || "Additional document upload failed."); }
+    finally { setBusyId(""); }
+  };
+
+  const remove = async (document) => {
+    if (!window.confirm(`Delete ${document.originalName}? The history entry will be retained.`)) return;
+    setBusyId(document.id); setFeedback("");
+    try { await deleteApplicationDocument(applicationId, document.id); setFeedback("Document deleted."); await load(); }
+    catch (requestError) { setFeedback(requestError.response?.data?.message || "Document deletion failed."); }
+    finally { setBusyId(""); }
+  };
+
   return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
     <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">{title}</h2><p className="mt-1 text-sm text-slate-500">Files open only after the server confirms your access.</p></div><button type="button" onClick={load} aria-label="Refresh documents" className="rounded-lg p-2 text-blue-700 hover:bg-blue-50"><RefreshCw size={18} /></button></div>
+    <form onSubmit={uploadAdditional} className="mt-4 grid gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"><input required value={additional.label} onChange={(event) => setAdditional({ ...additional, label: event.target.value })} className="rounded-lg border bg-white px-3 py-2 text-sm" placeholder="Document label" /><input required type="file" accept="image/jpeg,image/png,application/pdf" onChange={(event) => setAdditional({ ...additional, file: event.target.files?.[0] || null })} className="rounded-lg border bg-white p-1.5 text-sm" /><button disabled={busyId === "additional"} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Upload additional</button></form>
     {feedback && <p className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-900" role="status">{feedback}</p>}
     {error ? <div className="mt-4 rounded-xl bg-rose-50 p-4 text-sm text-rose-800" role="alert">{error}<button type="button" onClick={load} className="ml-2 font-bold underline">Retry</button></div>
       : documents === null ? <div className="mt-5 space-y-3" aria-label="Loading documents">{[1, 2].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}</div>
@@ -81,8 +104,10 @@ const DocumentViewer = ({ applicationId, title = "Application documents" }) => {
           : <div className="mt-5 grid gap-4 lg:grid-cols-2">{documents.map((document) => <article key={document.id} className={`rounded-xl border p-4 ${document.isCurrent ? "border-slate-200" : "border-slate-200 bg-slate-50 opacity-75"}`}>
             <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><FileText size={20} /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div className="min-w-0"><p className="font-bold text-slate-900">{document.label}</p><p className="truncate text-sm text-slate-600">{document.originalName}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyle[document.verificationStatus] || "bg-slate-100 text-slate-700"}`}>{document.verificationStatus.replaceAll("_", " ")}</span></div><p className="mt-2 text-xs text-slate-500">{document.extension?.toUpperCase() || "FILE"} · {formatFileSize(document.size)} · {document.source} · {document.uploadedAt ? formatDate(document.uploadedAt) : "Legacy upload"}</p></div></div>
             {document.verificationRemark && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-700"><strong>Review remark:</strong> {document.verificationRemark}</p>}
+            <p className="mt-2 text-xs text-slate-500">Uploaded by {document.uploadedByRole || "legacy"}{document.uploadedBy ? ` · ${document.uploadedBy}` : ""}{document.deletedAt ? ` · Deleted ${formatDate(document.deletedAt)}` : ""}</p>
+            {document.verificationHistory?.length > 0 && <details className="mt-3 rounded-lg bg-slate-50 p-3 text-xs"><summary className="cursor-pointer font-semibold text-slate-700">Verification history ({document.verificationHistory.length})</summary><div className="mt-2 space-y-2">{[...document.verificationHistory].reverse().map((item, index) => <p key={`${item.reviewedAt}-${index}`}><strong className="uppercase">{item.status.replaceAll("_", " ")}</strong> · {item.reviewedBy} · {formatDate(item.reviewedAt)}{item.remark ? ` · ${item.remark}` : ""}</p>)}</div></details>}
             {document.replacementRequested && <p className="mt-3 text-sm font-semibold text-violet-800">A replacement has been requested for this document.</p>}
-            <div className="mt-4 flex flex-wrap gap-2">{document.canPreview && <button type="button" onClick={() => openPreview(document)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview</button>}{document.canDownload && <button type="button" disabled={busyId === document.id} onClick={() => download(document)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"><Download size={16} /> Download</button>}{document.canVerify && <><button type="button" onClick={() => setReview({ id: document.id, status: "verified", remark: "" })} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Verify</button><button type="button" onClick={() => setReview({ id: document.id, status: "rejected", remark: "" })} className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700">Reject</button></>}{document.canRequestReupload && <button type="button" onClick={() => setReview({ id: document.id, status: "reupload_required", remark: "" })} className="rounded-lg border border-violet-300 px-3 py-2 text-sm font-semibold text-violet-700">Request re-upload</button>}{document.canReplace && <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white"><Upload size={16} /> Upload replacement<input type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only" onChange={(event) => replace(document, event.target.files?.[0])} /></label>}</div>
+            <div className="mt-4 flex flex-wrap gap-2">{document.canPreview && <button type="button" onClick={() => openPreview(document)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold text-blue-700"><Eye size={16} /> Preview</button>}{document.canDownload && <button type="button" disabled={busyId === document.id} onClick={() => download(document)} className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"><Download size={16} /> Download</button>}{document.canVerify && <><button type="button" onClick={() => setReview({ id: document.id, status: "verified", remark: "" })} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Verify</button><button type="button" onClick={() => setReview({ id: document.id, status: "rejected", remark: "" })} className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700">Reject</button></>}{document.canRequestReupload && <button type="button" onClick={() => setReview({ id: document.id, status: "reupload_required", remark: "" })} className="rounded-lg border border-violet-300 px-3 py-2 text-sm font-semibold text-violet-700">Request re-upload</button>}{document.canReplace && <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white"><Upload size={16} /> Upload replacement<input type="file" accept="image/jpeg,image/png,application/pdf" className="sr-only" onChange={(event) => replace(document, event.target.files?.[0])} /></label>}{document.canDelete && !document.deletedAt && <button type="button" disabled={busyId === document.id} onClick={() => remove(document)} className="inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50"><Trash2 size={16} /> Delete</button>}</div>
             {busyId === document.id && uploadProgress[document.id] !== undefined && <div className="mt-3"><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full bg-violet-600" style={{ width: `${uploadProgress[document.id]}%` }} /></div><p className="mt-1 text-xs text-slate-500">Uploading {uploadProgress[document.id]}%</p></div>}
             {review?.id === document.id && <div className="mt-4 rounded-xl border bg-slate-50 p-3"><label className="text-sm font-semibold">Verification remark<textarea rows="3" maxLength="1000" value={review.remark} onChange={(event) => setReview({ ...review, remark: event.target.value })} className="mt-2 w-full rounded-lg border bg-white p-2" placeholder={review.status === "verified" ? "Optional remark" : "Required explanation"} /></label><div className="mt-2 flex gap-2"><button type="button" disabled={busyId === document.id || (["rejected", "reupload_required"].includes(review.status) && !review.remark.trim())} onClick={submitReview} className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">Confirm</button><button type="button" onClick={() => setReview(null)} className="rounded-lg border px-3 py-2 text-sm">Cancel</button></div></div>}
           </article>)}</div>}

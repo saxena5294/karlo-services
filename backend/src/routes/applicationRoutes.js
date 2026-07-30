@@ -10,12 +10,13 @@ import {
 } from "../controllers/applicationController.js";
 import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
 import { uploadSingleApplicationFile } from "../middlewares/uploadMiddleware.js";
-import { downloadDocument, listDocuments, previewDocument, replaceDocument, verifyDocument } from "../controllers/documentController.js";
+import { deleteDocument, downloadDocument, listDocuments, previewDocument, replaceDocument, uploadAdditionalDocument, verifyDocument } from "../controllers/documentController.js";
 import {
   developmentAuth,
   requireRole,
 } from "../middlewares/developmentAuthMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
+import * as workflowController from "../controllers/applicationWorkflowController.js";
 
 const router = express.Router();
 
@@ -26,6 +27,12 @@ router.get("/:applicationId/documents/:documentId/preview", developmentAuth, pre
 router.get("/:applicationId/documents/:documentId/download", developmentAuth, downloadDocument);
 router.patch("/:applicationId/documents/:documentId/verification", developmentAuth, verifyDocument);
 router.post("/:applicationId/documents/:documentId/replacement", developmentAuth, uploadSingleApplicationFile, replaceDocument);
+router.post("/:applicationId/documents", developmentAuth, uploadSingleApplicationFile, uploadAdditionalDocument);
+router.delete("/:applicationId/documents/:documentId", developmentAuth, requireRole(ROLES.ADMIN), deleteDocument);
+router.get("/:applicationId/workflow", developmentAuth, workflowController.workflow);
+router.post("/:applicationId/comments", developmentAuth, workflowController.createComment);
+router.patch("/:applicationId/comments/:commentId", developmentAuth, workflowController.updateComment);
+router.delete("/:applicationId/comments/:commentId", developmentAuth, workflowController.deleteComment);
 
 // TODO(Clerk): protect with customer authentication and derive customerId from req.auth.
 router.get(

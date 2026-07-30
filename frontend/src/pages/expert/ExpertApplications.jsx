@@ -8,21 +8,22 @@ import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatusBadge from "../../components/dashboard/StatusBadge";
 import { formatDate } from "../../utils/dashboardFormatters";
 
-const statuses = ["Assigned", "Documents Required", "Processing", "Approved", "Completed", "Rejected", "Cancelled"];
+const statuses = ["Assigned", "Documents Required", "Processing", "Awaiting Admin Review", "Approved", "Completed", "Delivered", "Rejected", "Cancelled"];
 
 const ExpertApplications = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get("status") || "";
   const search = searchParams.get("search") || "";
+  const priority = searchParams.get("priority") || "";
   const page = Math.max(Number.parseInt(searchParams.get("page"), 10) || 1, 1);
-  const queryKey = `${status}|${search}|${page}`;
+  const queryKey = `${status}|${priority}|${search}|${page}`;
   const [searchInput, setSearchInput] = useState(search);
   const [result, setResult] = useState({ key: "", applications: [], pagination: null });
   const [requestError, setRequestError] = useState({ key: "", message: "" });
 
   useEffect(() => {
     let isCurrent = true;
-    getExpertApplications({ page, limit: 10, status: status || undefined, search: search || undefined })
+    getExpertApplications({ page, limit: 10, status: status || undefined, priority: priority || undefined, search: search || undefined })
       .then((response) => {
         if (isCurrent) setResult({ key: queryKey, applications: response.applications, pagination: response.pagination });
       })
@@ -32,7 +33,7 @@ const ExpertApplications = () => {
     return () => {
       isCurrent = false;
     };
-  }, [page, queryKey, search, status]);
+  }, [page, priority, queryKey, search, status]);
 
   const updateQuery = (values) => {
     const next = new URLSearchParams(searchParams);
@@ -53,6 +54,8 @@ const ExpertApplications = () => {
     { label: "Customer", render: (item) => item.customerName },
     { label: "Service", render: (item) => item.service?.title },
     { label: "Status", render: (item) => <StatusBadge status={item.status} /> },
+    { label: "Priority", render: (item) => <span className="text-xs font-bold uppercase">{item.priority || "medium"}</span> },
+    { label: "Due", render: (item) => item.expectedCompletionAt ? formatDate(item.expectedCompletionAt) : "—" },
     { label: "Assigned", render: (item) => formatDate(item.assignedAt), cellClassName: "whitespace-nowrap text-slate-500" },
     { label: "Updated", render: (item) => formatDate(item.updatedAt), cellClassName: "whitespace-nowrap text-slate-500" },
   ];
@@ -60,9 +63,10 @@ const ExpertApplications = () => {
   return (
     <div className="space-y-6">
       <div><h2 className="text-2xl font-bold">Assigned applications</h2><p className="mt-1 text-slate-500">Only applications currently assigned to your expert identity are shown.</p></div>
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_220px_180px]">
         <form onSubmit={submitSearch} className="flex min-w-0 gap-2"><label htmlFor="expert-search" className="sr-only">Search assignments</label><div className="relative min-w-0 flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} /><input id="expert-search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Number, customer, or service" className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-3 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" /></div><button type="submit" className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">Search</button></form>
         <select aria-label="Filter by status" value={status} onChange={(event) => updateQuery({ status: event.target.value, page: "" })} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"><option value="">All statuses</option>{statuses.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+        <select aria-label="Filter by priority" value={priority} onChange={(event) => updateQuery({ priority: event.target.value, page: "" })} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5"><option value="">All priorities</option>{["low","medium","high","urgent"].map((item) => <option key={item}>{item}</option>)}</select>
       </div>
 
       {loading ? <LoadingSkeleton count={4} /> : error ? <EmptyState title="Assignments unavailable" description={error} /> : !applications.length ? <EmptyState title="No matching assignments" description={search || status ? "Try clearing the search or status filter." : "No applications are assigned to you yet."} /> : <>

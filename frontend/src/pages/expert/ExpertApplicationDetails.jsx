@@ -13,6 +13,7 @@ import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatusBadge from "../../components/dashboard/StatusBadge";
 import DocumentViewer from "../../components/documents/DocumentViewer";
+import ApplicationWorkflowPanel from "../../components/applications/ApplicationWorkflowPanel";
 import {
   formatDate,
   formatFieldName,
@@ -324,6 +325,7 @@ const ExpertApplicationDetails = () => {
       </section>
 
       <DocumentViewer applicationId={id} title="Assigned application documents" />
+      <ApplicationWorkflowPanel applicationId={id} canComment />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold">Application timeline</h2>

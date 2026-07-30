@@ -271,6 +271,21 @@ const getPagination = ({ page, limit }) => {
   return { page: parsedPage, limit: parsedLimit, skip: (parsedPage - 1) * parsedLimit };
 };
 
+const applicationSort = (query = {}, fallback = "createdAt") => {
+  const allowed = new Set(["createdAt", "updatedAt", "assignedAt", "expectedCompletionAt", "priority", "status", "applicationNumber"]);
+  const field = allowed.has(query.sortBy) ? query.sortBy : fallback;
+  const direction = query.sortOrder === "asc" ? 1 : -1;
+  return { [field]: direction, _id: direction };
+};
+
+const addWorkflowFilters = (filter, query = {}) => {
+  if (query.priority) {
+    if (!["low", "medium", "high", "urgent"].includes(query.priority)) throw new ApiError(400, "Invalid priority filter");
+    filter.priority = query.priority;
+  }
+  return filter;
+};
+
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const addHistoryFilters = async (filter, query = {}) => {
@@ -296,14 +311,18 @@ const addHistoryFilters = async (filter, query = {}) => {
 };
 
 const customerOwnerFilter = (customerUserId) => ({
-  $or: [{ customerUserId }, { customerId: customerUserId }],
+  $and: [
+    { $or: [{ customerUserId }, { customerId: customerUserId }] },
+    { isDeleted: { $ne: true } },
+  ],
 });
 
-const expertOwnerFilter = (expertUserId) => ({ assignedExpertId: expertUserId });
+const expertOwnerFilter = (expertUserId) => ({ assignedExpertId: expertUserId, isDeleted: { $ne: true } });
 
 const partnerOwnerFilter = (partnerUserId) => ({
   assignmentType: ASSIGNMENT_TYPES.PARTNER,
   assignedPartnerId: partnerUserId,
+  isDeleted: { $ne: true },
 });
 
 const getCustomerUserId = (application) => application.customerUserId || application.customerId;
@@ -332,12 +351,13 @@ const buildCustomerFilter = async (customerId, query = {}) => {
 };
 
 const listApplications = async (filter, query = {}) => {
+  addWorkflowFilters(filter, query);
   const { page, limit, skip } = getPagination(query);
   const [applications, total] = await Promise.all([
     Application.find(filter)
       .select("-formData -files -additionalDocuments -completionDocuments")
       .populate("service", "title slug category processingTime price")
-      .sort({ createdAt: -1 })
+      .sort(applicationSort(query))
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -459,7 +479,7 @@ const createStatusNotifications = async ({
   }
 };
 
-const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, session }) => {
+const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, actorRole = "system", session }) => {
   const currentStatus = normalizeStatus(application.status) || application.status;
   if (currentStatus === nextStatus) {
     throw new ApiError(409, `Application is already ${nextStatus}`);
@@ -475,9 +495,16 @@ const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, 
   }
 
   application.status = nextStatus;
+  if (nextStatus === APPLICATION_STATUSES.COMPLETED && !application.actualCompletionAt) {
+    application.actualCompletionAt = new Date();
+  }
   await application.save({ session });
   const [timelineEntry] = await ApplicationTimeline.create(
-    [{ application: application._id, status: nextStatus, remarks, updatedBy }],
+    [{
+      application: application._id, status: nextStatus, remarks, updatedBy,
+      actorRole, eventType: "status", action: "status_changed", visibility: "public",
+      metadata: { previousStatus: currentStatus, nextStatus },
+    }],
     { session }
   );
   await createStatusNotifications({
@@ -490,10 +517,10 @@ const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, 
   });
 };
 
-const addVisibleRemarkForApplication = async ({ application, remarks, updatedBy, session }) => {
+const addVisibleRemarkForApplication = async ({ application, remarks, updatedBy, actorRole = "system", session }) => {
   const status = normalizeStatus(application.status) || application.status;
   const [timelineEntry] = await ApplicationTimeline.create(
-    [{ application: application._id, status, remarks, updatedBy }],
+    [{ application: application._id, status, remarks, updatedBy, actorRole, eventType: "comment", action: "public_remark_added", visibility: "public" }],
     { session }
   );
   const customerUserId = getCustomerUserId(application);
@@ -517,7 +544,7 @@ const addVisibleRemarkForApplication = async ({ application, remarks, updatedBy,
   );
 };
 
-const requestDocumentsForApplication = async ({ application, remarks, updatedBy, session }) => {
+const requestDocumentsForApplication = async ({ application, remarks, updatedBy, actorRole = "system", session }) => {
   const currentStatus = normalizeStatus(application.status) || application.status;
   if (currentStatus === APPLICATION_STATUSES.DOCUMENTS_REQUIRED) {
     const [timelineEntry] = await ApplicationTimeline.create(
@@ -526,6 +553,10 @@ const requestDocumentsForApplication = async ({ application, remarks, updatedBy,
         status: APPLICATION_STATUSES.DOCUMENTS_REQUIRED,
         remarks,
         updatedBy,
+        actorRole,
+        eventType: "document",
+        action: "documents_requested",
+        visibility: "public",
       }],
       { session }
     );
@@ -555,6 +586,7 @@ const requestDocumentsForApplication = async ({ application, remarks, updatedBy,
     nextStatus: APPLICATION_STATUSES.DOCUMENTS_REQUIRED,
     remarks,
     updatedBy,
+    actorRole,
     session,
   });
 };
@@ -687,6 +719,10 @@ export const submitApplication = async ({
           status: APPLICATION_STATUSES.SUBMITTED,
           remarks: "Application submitted successfully",
           updatedBy,
+          actorRole: ROLES.CUSTOMER,
+          eventType: "submission",
+          action: "application_submitted",
+          visibility: "public",
         }],
         { session }
       );
@@ -743,7 +779,7 @@ export const updateApplicationStatus = async ({
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findApplicationForUpdate(applicationNumber, session);
-    await applyStatusChange({ application, nextStatus, remarks, updatedBy, session });
+    await applyStatusChange({ application, nextStatus, remarks, updatedBy, actorRole: ROLES.ADMIN, session });
   });
 
   return application;
@@ -833,7 +869,12 @@ export const assignApplication = async ({
         ? `partner ${partner.businessName}`
         : "nobody";
     await ApplicationTimeline.create(
-      [{ application: application._id, status: application.status, remarks: cleanRemarks || `Assigned to ${assigneeLabel}`, updatedBy }],
+      [{
+        application: application._id, status: application.status,
+        remarks: cleanRemarks || `Assigned to ${assigneeLabel}`, updatedBy,
+        actorRole: ROLES.ADMIN, eventType: "assignment", action: normalizedType ? "application_assigned" : "application_unassigned",
+        visibility: "public", metadata: { assignmentType: normalizedType, assigneeUserId: nextUserId },
+      }],
       { session }
     );
     if (normalizedType) {
@@ -965,7 +1006,7 @@ export const getCustomerDashboardSummary = async (customerId) => {
             $sum: { $cond: [{ $eq: ["$status", "Documents Required"] }, 1, 0] },
           },
           completed: {
-            $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] },
+            $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] },
           },
           rejected: {
             $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] },
@@ -1016,7 +1057,7 @@ export const getCustomerApplicationById = async (customerId, id) => {
     ({ fieldName, originalName, format, size }) => ({ fieldName, originalName, format, size })
   );
   // Timeline remarks are customer-facing. Future internal notes need a separate protected field.
-  const safeTimeline = application.timeline.map(({ status, remarks, createdAt }) => ({
+  const safeTimeline = application.timeline.filter(({ visibility }) => visibility !== "internal").map(({ status, remarks, createdAt }) => ({
     status,
     remarks,
     createdAt,
@@ -1042,6 +1083,7 @@ export const getExpertApplications = async (expertId, query = {}) => {
   const status = query.status ? normalizeStatus(query.status) : null;
   if (query.status && !status) throw new ApiError(400, "Invalid application status");
   if (status) filter.status = { $in: getStatusStorageValues(status) };
+  addWorkflowFilters(filter, query);
 
   if (query.search?.trim()) {
     const searchPattern = escapeRegex(query.search.trim());
@@ -1061,9 +1103,9 @@ export const getExpertApplications = async (expertId, query = {}) => {
   const { page, limit, skip } = getPagination(query);
   const [documents, total] = await Promise.all([
     Application.find(filter)
-      .select("applicationNumber service formData status assignedAt createdAt updatedAt")
+      .select("applicationNumber service formData status priority expectedCompletionAt actualCompletionAt assignedAt createdAt updatedAt")
       .populate("service", "title slug category processingTime")
-      .sort({ assignedAt: -1, createdAt: -1 })
+      .sort(applicationSort(query, "assignedAt"))
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -1105,7 +1147,7 @@ export const getExpertDashboardSummary = async (expertId) => {
             $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW] }, 1, 0] },
           },
           completed: {
-            $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.COMPLETED] }, 1, 0] },
+            $sum: { $cond: [{ $in: ["$status", [APPLICATION_STATUSES.COMPLETED, APPLICATION_STATUSES.DELIVERED]] }, 1, 0] },
           },
         },
       },
@@ -1191,7 +1233,7 @@ export const getPartnerDashboardSummary = async (partnerId) => {
         processing: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.PROCESSING] }, 1, 0] } },
         documentsRequired: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.DOCUMENTS_REQUIRED] }, 1, 0] } },
         awaitingAdminReview: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW] }, 1, 0] } },
-        completed: { $sum: { $cond: [{ $eq: ["$status", APPLICATION_STATUSES.COMPLETED] }, 1, 0] } },
+        completed: { $sum: { $cond: [{ $in: ["$status", [APPLICATION_STATUSES.COMPLETED, APPLICATION_STATUSES.DELIVERED]] }, 1, 0] } },
       } },
       { $project: { _id: 0 } },
     ]),
@@ -1281,6 +1323,7 @@ export const updateExpertApplicationStatus = async ({
       nextStatus,
       remarks: cleanRemarks,
       updatedBy: expertId,
+      actorRole: ROLES.EXPERT,
       session,
     });
   });
@@ -1299,6 +1342,7 @@ export const addExpertRemark = async ({ expertId, id, remarks }) => {
       application,
       remarks: cleanRemarks,
       updatedBy: expertId,
+      actorRole: ROLES.EXPERT,
       session,
     });
   });
@@ -1320,6 +1364,7 @@ export const requestApplicationDocuments = async ({ expertId, id, remarks }) => 
       application,
       remarks: cleanRemarks,
       updatedBy: assigneeId,
+      actorRole: ROLES.EXPERT,
       session,
     });
   });
@@ -1332,6 +1377,7 @@ export const getPartnerApplications = async (partnerId, query = {}) => {
   const status = query.status ? normalizeStatus(query.status) : null;
   if (query.status && !status) throw new ApiError(400, "Invalid application status");
   if (status) filter.status = { $in: getStatusStorageValues(status) };
+  addWorkflowFilters(filter, query);
   if (query.search?.trim()) {
     const pattern = escapeRegex(query.search.trim());
     const services = await Service.find({ title: { $regex: pattern, $options: "i" } }).select("_id").lean();
@@ -1346,9 +1392,9 @@ export const getPartnerApplications = async (partnerId, query = {}) => {
   const { page, limit, skip } = getPagination(query);
   const [documents, total] = await Promise.all([
     Application.find(filter)
-      .select("applicationNumber service formData status assignedAt createdAt updatedAt")
+      .select("applicationNumber service formData status priority expectedCompletionAt actualCompletionAt assignedAt createdAt updatedAt")
       .populate("service", "title slug category processingTime")
-      .sort({ assignedAt: -1, createdAt: -1 })
+      .sort(applicationSort(query, "assignedAt"))
       .skip(skip).limit(limit).lean(),
     Application.countDocuments(filter),
   ]);
@@ -1396,7 +1442,7 @@ export const updatePartnerApplicationStatus = async ({ partnerId, id, status, re
     if (nextStatus === APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW && !application.completionDocuments?.length) {
       throw new ApiError(409, "Upload at least one completion document before submitting for admin review");
     }
-    await applyStatusChange({ application, nextStatus, remarks: cleanRemarks, updatedBy: partnerId, session });
+    await applyStatusChange({ application, nextStatus, remarks: cleanRemarks, updatedBy: partnerId, actorRole: ROLES.PARTNER, session });
   };
   if (existingSession) await execute(existingSession);
   else await mongoose.connection.transaction(execute);
@@ -1409,7 +1455,7 @@ export const addPartnerRemark = async ({ partnerId, id, remarks }) => {
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findPartnerApplicationForUpdate(partnerId, id, session);
-    await addVisibleRemarkForApplication({ application, remarks: cleanRemarks, updatedBy: partnerId, session });
+    await addVisibleRemarkForApplication({ application, remarks: cleanRemarks, updatedBy: partnerId, actorRole: ROLES.PARTNER, session });
   });
   return application;
 };
@@ -1420,7 +1466,7 @@ export const requestPartnerApplicationDocuments = async ({ partnerId, id, remark
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findPartnerApplicationForUpdate(partnerId, id, session);
-    await requestDocumentsForApplication({ application, remarks: cleanRemarks, updatedBy: partnerId, session });
+    await requestDocumentsForApplication({ application, remarks: cleanRemarks, updatedBy: partnerId, actorRole: ROLES.PARTNER, session });
   });
   return application;
 };
@@ -1487,7 +1533,7 @@ export const addAdminVisibleRemark = async ({ applicationNumber, remarks, update
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findApplicationForUpdate(applicationNumber, session);
-    await addVisibleRemarkForApplication({ application, remarks: cleanRemarks, updatedBy, session });
+    await addVisibleRemarkForApplication({ application, remarks: cleanRemarks, updatedBy, actorRole: ROLES.ADMIN, session });
   });
   return application;
 };
@@ -1502,7 +1548,7 @@ export const requestApplicationDocumentsByAdmin = async ({
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await findApplicationForUpdate(applicationNumber, session);
-    await requestDocumentsForApplication({ application, remarks: cleanRemarks, updatedBy, session });
+    await requestDocumentsForApplication({ application, remarks: cleanRemarks, updatedBy, actorRole: ROLES.ADMIN, session });
   });
   return application;
 };

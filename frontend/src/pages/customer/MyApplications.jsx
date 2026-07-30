@@ -14,6 +14,7 @@ const statuses = [
   "Processing",
   "Approved",
   "Completed",
+  "Delivered",
   "Rejected",
   "Cancelled",
 ];

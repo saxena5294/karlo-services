@@ -19,9 +19,13 @@ import {
 } from "./applicationService.js";
 import { sanitizeNotificationText } from "./notificationService.js";
 import { replaceCmsImage } from "./cmsService.js";
+import { getApplicationWorkflow } from "./applicationWorkflowService.js";
+import { PaymentRecord } from "../models/dashboardModuleModels.js";
+import { ROLES } from "../constants/roleConstants.js";
+import { AuditLog } from "../models/auditLogModel.js";
 
 const DEFAULT_LIMIT = 20;
-const TERMINAL_STATUSES = ["Completed", "Rejected", "Cancelled", "completed", "rejected"];
+const TERMINAL_STATUSES = ["Completed", "Delivered", "Rejected", "Cancelled", "completed", "rejected"];
 
 const paginate = (query = {}) => {
   const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
@@ -49,7 +53,14 @@ const assertOnlyFields = (payload, allowed) => {
 };
 
 const buildApplicationFilter = async (query) => {
+  const allowedQuery = new Set(["page", "limit", "status", "serviceId", "expertId", "partnerId", "assignmentType", "dateFrom", "dateTo", "search", "priority", "archived", "deleted", "sortBy", "sortOrder"]);
+  const unexpected = Object.keys(query).filter((key) => !allowedQuery.has(key));
+  if (unexpected.length) throw new ApiError(400, `Unexpected query parameters: ${unexpected.join(", ")}`);
   const filter = {};
+  if (query.deleted !== undefined && !["true", "false"].includes(String(query.deleted))) {
+    throw new ApiError(400, "deleted must be true or false");
+  }
+  filter.isDeleted = query.deleted === "true" ? true : { $ne: true };
   if (query.status) {
     const status = APPLICATION_STATUS_VALUES.find(
       (item) => item.toLowerCase() === query.status.replaceAll("_", " ").toLowerCase()
@@ -63,7 +74,21 @@ const buildApplicationFilter = async (query) => {
   }
   const expertId = query.expertId;
   if (expertId) filter.assignedExpertId = expertId.trim();
-  if (query.assignmentType) filter.assignmentType = query.assignmentType;
+  if (query.partnerId) filter.assignedPartnerId = query.partnerId.trim();
+  if (query.priority) {
+    if (!["low", "medium", "high", "urgent"].includes(query.priority)) throw new ApiError(400, "Invalid priority filter");
+    filter.priority = query.priority;
+  }
+  if (query.archived !== undefined) {
+    if (!["true", "false"].includes(String(query.archived))) throw new ApiError(400, "archived must be true or false");
+    filter.isArchived = String(query.archived) === "true";
+  } else if (query.deleted !== "true") {
+    filter.isArchived = { $ne: true };
+  }
+  if (query.assignmentType) {
+    if (!["expert", "partner"].includes(query.assignmentType)) throw new ApiError(400, "Invalid assignment type");
+    filter.assignmentType = query.assignmentType;
+  }
   if (query.dateFrom || query.dateTo) {
     filter.createdAt = {};
     if (query.dateFrom) filter.createdAt.$gte = new Date(`${query.dateFrom}T00:00:00.000Z`);
@@ -74,7 +99,11 @@ const buildApplicationFilter = async (query) => {
   }
   if (query.search?.trim()) {
     const pattern = escapeRegex(query.search.trim());
-    const services = await Service.find({ title: { $regex: pattern, $options: "i" } }).select("_id").lean();
+    const [services, experts, partners] = await Promise.all([
+      Service.find({ title: { $regex: pattern, $options: "i" } }).select("_id").lean(),
+      ExpertProfile.find({ displayName: { $regex: pattern, $options: "i" } }).select("userId").lean(),
+      PartnerProfile.find({ $or: [{ businessName: { $regex: pattern, $options: "i" } }, { ownerName: { $regex: pattern, $options: "i" } }] }).select("userId").lean(),
+    ]);
     const searchFilter = { $or: [
       { applicationNumber: { $regex: pattern, $options: "i" } },
       { service: { $in: services.map((item) => item._id) } },
@@ -82,6 +111,11 @@ const buildApplicationFilter = async (query) => {
       { "formData.applicantName": { $regex: pattern, $options: "i" } },
       { "formData.customerName": { $regex: pattern, $options: "i" } },
       { "formData.name": { $regex: pattern, $options: "i" } },
+      { applicantName: { $regex: pattern, $options: "i" } },
+      { mobileNumber: { $regex: pattern, $options: "i" } },
+      { email: { $regex: pattern, $options: "i" } },
+      { assignedExpertId: { $in: experts.map((item) => item.userId) } },
+      { assignedPartnerId: { $in: partners.map((item) => item.userId) } },
     ] };
     if (filter.$and) filter.$and.push(searchFilter);
     else Object.assign(filter, searchFilter);
@@ -92,24 +126,31 @@ const buildApplicationFilter = async (query) => {
 export const getAdminApplications = async (query = {}) => {
   const filter = await buildApplicationFilter(query);
   const { page, limit, skip } = paginate(query);
-  const [documents, total, experts] = await Promise.all([
+  const allowedSorts = new Set(["createdAt", "updatedAt", "applicationNumber", "status", "priority", "expectedCompletionAt"]);
+  if (query.sortBy && !allowedSorts.has(query.sortBy)) throw new ApiError(400, "Invalid application sort field");
+  if (query.sortOrder && !["asc", "desc"].includes(query.sortOrder)) throw new ApiError(400, "sortOrder must be asc or desc");
+  const sortBy = allowedSorts.has(query.sortBy) ? query.sortBy : "createdAt";
+  const sortDirection = query.sortOrder === "asc" ? 1 : -1;
+  const [documents, total, experts, partners] = await Promise.all([
     Application.find(filter)
-      .select("applicationNumber customerUserId customerId service formData fulfillmentType assignmentType assignedExpertId assignedPartnerId assignedAt status createdAt updatedAt")
+      .select("applicationNumber customerUserId customerId service formData applicantName mobileNumber email fulfillmentType assignmentType assignedExpertId assignedPartnerId assignedAt status priority expectedCompletionAt actualCompletionAt isArchived isDeleted createdAt updatedAt")
       .populate("service", "title slug category")
-      .sort({ createdAt: -1 })
+      .sort({ [sortBy]: sortDirection, _id: sortDirection })
       .skip(skip)
       .limit(limit)
       .lean(),
     Application.countDocuments(filter),
     ExpertProfile.find().select("userId displayName").lean(),
+    PartnerProfile.find().select("userId businessName").lean(),
   ]);
   const expertNames = new Map(experts.map((item) => [item.userId, item.displayName]));
+  const partnerNames = new Map(partners.map((item) => [item.userId, item.businessName]));
   return {
     applications: documents.map(({ formData, ...item }) => ({
       ...item,
-      customerName: customerName(formData),
+      customerName: item.applicantName || customerName(formData),
       assignedExpertName: expertNames.get(item.assignedExpertId) || item.assignedExpertId || "Unassigned",
-      assigneeName: item.assignmentType === "partner" ? (item.assignedPartnerId || "Unassigned") : (expertNames.get(item.assignedExpertId) || item.assignedExpertId || "Unassigned"),
+      assigneeName: item.assignmentType === "partner" ? (partnerNames.get(item.assignedPartnerId) || item.assignedPartnerId || "Unassigned") : (expertNames.get(item.assignedExpertId) || item.assignedExpertId || "Unassigned"),
     })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   };
@@ -123,13 +164,22 @@ export const getAdminApplicationById = async (id) => {
     .lean();
   if (!application) throw new ApiError(404, "Application not found");
 
-  const [timeline, internalRemarks, assignmentHistory, expert] = await Promise.all([
+  const [timeline, internalRemarks, assignmentHistory, expert, partner, workflow, payments, auditActivity] = await Promise.all([
     ApplicationTimeline.find({ application: application._id }).sort({ createdAt: 1 }).lean(),
     ApplicationNote.find({ application: application._id }).sort({ createdAt: -1 }).lean(),
     ApplicationAssignment.find({ application: application._id }).sort({ createdAt: -1 }).lean(),
     application.assignedExpertId
       ? ExpertProfile.findOne({ userId: application.assignedExpertId }).lean()
       : null,
+    application.assignedPartnerId
+      ? PartnerProfile.findOne({ userId: application.assignedPartnerId }).select("-verificationDocuments").lean()
+      : null,
+    getApplicationWorkflow({ id: String(application._id), userId: "admin-details", role: ROLES.ADMIN }),
+    PaymentRecord.find({ applicationId: application._id }).sort({ createdAt: -1 }).lean(),
+    AuditLog.find({ $or: [
+      { entityType: "application", entityId: { $in: [String(application._id), application.applicationNumber] } },
+      { "metadata.applicationId": { $in: [String(application._id), application.applicationNumber] } },
+    ] }).sort({ createdAt: -1 }).limit(200).lean(),
   ]);
   delete application.statusHistory;
   const safeDocument = ({ fieldName, fieldKey, label, documentType, customLabel, originalName, mimeType, format, size, required, status, source, uploadedAt, verificationStatus, verificationRemark, replacementRequested }) => ({ fieldName, fieldKey, label, documentType, customLabel, originalName, mimeType, format, size, required, status, source, uploadedAt, verificationStatus, verificationRemark, replacementRequested });
@@ -140,9 +190,15 @@ export const getAdminApplicationById = async (id) => {
     ...application,
     customerName: customerName(application.formData),
     assignedExpert: expert,
+    assignedPartner: partner,
     timeline,
     internalRemarks,
     assignmentHistory,
+    comments: workflow.comments,
+    documentChecklist: workflow.documentChecklist,
+    isOverdue: workflow.isOverdue,
+    payments,
+    auditActivity,
   };
 };
 
@@ -240,7 +296,7 @@ export const getAdminExperts = async (query = {}) => {
   const ids = profiles.map((item) => item.userId);
   const counts = await Application.aggregate([
     { $match: { assignedExpertId: { $in: ids } } },
-    { $group: { _id: "$assignedExpertId", activeAssignments: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, pendingApplications: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "Documents Required", "Processing", "Approved", "processing", "under_review"]] }, 1, 0] } } } },
+    { $group: { _id: "$assignedExpertId", activeAssignments: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } }, pendingApplications: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "Documents Required", "Processing", "Approved", "processing", "under_review"]] }, 1, 0] } } } },
   ]);
   const countMap = new Map(counts.map((item) => [item._id, item]));
   return {
@@ -380,9 +436,9 @@ export const getAdminReports = async () => {
   const [byStatus, byService, byExpert, byDate, totals, leadsByStatus, leadsByCity, partnerPerformance] = await Promise.all([
     Application.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Application.aggregate([{ $group: { _id: "$service", count: { $sum: 1 } } }, { $lookup: { from: "services", localField: "_id", foreignField: "_id", as: "service" } }, { $unwind: { path: "$service", preserveNullAndEmptyArrays: true } }, { $project: { _id: 0, serviceId: "$_id", serviceTitle: { $ifNull: ["$service.title", "Unknown service"] }, count: 1 } }, { $sort: { count: -1 } }]),
-    Application.aggregate([{ $match: { assignedExpertId: { $nin: [null, ""] } } }, { $group: { _id: "$assignedExpertId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { assignedExpertId: { $nin: [null, ""] } } }, { $group: { _id: "$assignedExpertId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
     Application.aggregate([{ $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 30 }]),
-    Application.aggregate([{ $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] } }, averageProcessingMs: { $avg: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, { $subtract: ["$updatedAt", "$createdAt"] }, null] } } } }]),
+    Application.aggregate([{ $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] } }, averageProcessingMs: { $avg: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, { $subtract: ["$updatedAt", "$createdAt"] }, null] } } } }]),
     Lead.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Lead.aggregate([{ $group: { _id: "$city", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Lead.aggregate([{ $match: { acceptedByPartnerId: { $nin: [null, ""] } } }, { $group: { _id: "$acceptedByPartnerId", accepted: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } } } }, { $sort: { accepted: -1 } }]),
@@ -426,7 +482,7 @@ export const getAdminDashboardSummary = async () => {
       assigned: statusMap.Assigned || 0,
       processing: (statusMap.Processing || 0) + (statusMap.processing || 0) + (statusMap.under_review || 0),
       documentsRequired: statusMap["Documents Required"] || 0,
-      completed: (statusMap.Completed || 0) + (statusMap.completed || 0),
+      completed: (statusMap.Completed || 0) + (statusMap.Delivered || 0) + (statusMap.completed || 0),
       rejected: (statusMap.Rejected || 0) + (statusMap.rejected || 0),
       activeServices,
       totalCustomers: customers.length,

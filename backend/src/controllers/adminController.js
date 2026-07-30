@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { createPartnerProfileByAdmin, listPartnerProfilesForAdmin, publishApplicationLead, updatePartnerVerification } from "../services/partnerMarketplaceService.js";
 import * as controlService from "../services/adminControlService.js";
 import { listAuditLogs, writeAuditLog } from "../services/auditService.js";
+import * as workflowService from "../services/applicationWorkflowService.js";
 
 const validateBody = (req, allowed) => {
   const unexpected = Object.keys(req.body).filter((key) => !allowed.includes(key));
@@ -25,6 +26,33 @@ export const assignApplication = send(async (req) => { validateBody(req, ["assig
 export const updateApplicationStatus = send(async (req) => { validateBody(req, ["status", "remarks"]); const application = await adminService.updateAdminApplicationStatus({ id: req.params.id, status: req.body.status, remarks: req.body.remarks, adminUserId: req.auth.userId }); await writeAuditLog({ req, action: "application.status_override", entityType: "application", entityId: application._id, summary: `Application ${application.applicationNumber} status changed to ${application.status}`, after: { status: application.status } }); return { application }; });
 export const addApplicationRemark = send(async (req) => { validateBody(req, ["remarks", "visibility"]); return { remark: await adminService.addAdminApplicationRemark({ id: req.params.id, remarks: req.body.remarks, visibility: req.body.visibility, adminUserId: req.auth.userId }) }; }, 201);
 export const requestDocuments = send(async (req) => { validateBody(req, ["remarks"]); return { application: await adminService.requestAdminApplicationDocuments({ id: req.params.id, remarks: req.body.remarks, adminUserId: req.auth.userId }) }; });
+export const updateApplicationWorkflow = send(async (req) => {
+  const application = await workflowService.updateApplicationWorkflow({ id: req.params.id, adminUserId: req.auth.userId, payload: req.body });
+  await writeAuditLog({ req, action: application.isArchived ? "application.archive" : "application.workflow_update", entityType: "application", entityId: application._id, summary: `Application ${application.applicationNumber} workflow controls updated`, after: req.body });
+  return { application };
+});
+export const createApplicationNote = send(async (req) => {
+  validateBody(req, ["remarks"]);
+  const note = await workflowService.createApplicationNote({ id: req.params.id, adminUserId: req.auth.userId, remarks: req.body.remarks });
+  await writeAuditLog({ req, action: "application.note_create", entityType: "application", entityId: req.params.id, summary: "Private application note added", metadata: { noteId: note._id } });
+  return { note };
+}, 201);
+export const updateApplicationNote = send(async (req) => {
+  validateBody(req, ["remarks"]);
+  const note = await workflowService.updateApplicationNote({ id: req.params.id, noteId: req.params.noteId, adminUserId: req.auth.userId, remarks: req.body.remarks });
+  await writeAuditLog({ req, action: "application.note_update", entityType: "application_note", entityId: note._id, summary: "Private application note updated", metadata: { applicationId: String(note.application) } });
+  return { note };
+});
+export const deleteApplicationNote = send(async (req) => {
+  const note = await workflowService.deleteApplicationNote({ id: req.params.id, noteId: req.params.noteId, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: "application.note_delete", entityType: "application_note", entityId: note._id, summary: "Private application note deleted", metadata: { applicationId: String(note.application) } });
+  return { note };
+});
+export const deleteApplication = send(async (req) => {
+  const application = await workflowService.softDeleteApplication({ id: req.params.id, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: "application.delete", entityType: "application", entityId: application._id, summary: `Application ${application.applicationNumber} soft-deleted` });
+  return { application };
+});
 export const publishLead = send(async (req) => { validateBody(req, ["city", "pincode", "safeRequirementSummary", "leadPrice", "status", "expiresAt"]); const lead = await publishApplicationLead({ applicationId: req.params.id, adminUserId: req.auth.userId, payload: req.body }); await writeAuditLog({ req, action: lead.status === "open" ? "lead.publish" : "lead.draft", entityType: "lead", entityId: lead._id, summary: `${lead.status === "open" ? "Published" : "Saved"} lead for ${lead.applicationNumber}`, after: lead }); return { lead }; }, 201);
 export const listPartners = send(async (req) => listPartnerProfilesForAdmin(req.query));
 export const verifyPartner = send(async (req) => { validateBody(req, ["verificationStatus"]); const partner = await updatePartnerVerification({ id: req.params.id, verificationStatus: req.body.verificationStatus }); await writeAuditLog({ req, action: "partner.verification", entityType: "partner", entityId: partner._id, summary: `Partner verification changed to ${partner.verificationStatus}`, after: { verificationStatus: partner.verificationStatus } }); return { partner }; });

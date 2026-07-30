@@ -6,6 +6,7 @@ import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatusBadge from "../../components/dashboard/StatusBadge";
 import DocumentViewer from "../../components/documents/DocumentViewer";
+import ApplicationWorkflowPanel from "../../components/applications/ApplicationWorkflowPanel";
 import {
   formatDate,
   formatFieldName,
@@ -37,6 +38,23 @@ const CustomerApplicationDetails = () => {
   const labels = Object.fromEntries(
     (application.serviceForm?.fields || []).map(({ name, label }) => [name, label])
   );
+  const downloadReceipt = () => {
+    const receipt = [
+      "Karlo Services Application Receipt",
+      `Application: ${application.applicationNumber}`,
+      `Service: ${application.service?.title || application.serviceName}`,
+      `Applicant: ${application.applicantName || "Customer"}`,
+      `Submitted: ${formatDate(application.submittedAt || application.createdAt)}`,
+      `Status: ${application.status}`,
+      `Documents: ${application.receipt?.documentCount || 0}`,
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([receipt], { type: "text/plain;charset=utf-8" }));
+    const anchor = window.document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${application.applicationNumber}-receipt.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6">
@@ -45,11 +63,13 @@ const CustomerApplicationDetails = () => {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div className="min-w-0"><p className="break-all text-sm font-semibold text-blue-700">{application.applicationNumber}</p><h2 className="mt-2 text-2xl font-bold">{application.service?.title}</h2><p className="mt-2 text-sm text-slate-500">Submitted {formatDate(application.createdAt)} · Updated {formatDate(application.updatedAt)}</p></div>
-          <StatusBadge status={application.status} />
+          <div className="flex flex-wrap items-center gap-2"><button type="button" onClick={downloadReceipt} className="rounded-lg border px-3 py-2 text-sm font-semibold text-blue-700">Download receipt</button><StatusBadge status={application.status} /></div>
         </div>
       </section>
 
       <DocumentViewer applicationId={id} title="Application documents" />
+      <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="font-bold">Declaration forms</h2><p className="mt-1 text-sm text-slate-500">Preview or download declaration forms available for your application role.</p><Link to="/customer/declaration-forms" className="mt-3 inline-flex rounded-lg border border-blue-700 px-4 py-2 text-sm font-semibold text-blue-700">Open declaration forms</Link></section>
+      <ApplicationWorkflowPanel applicationId={id} />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
         <h2 className="text-lg font-bold">Applicant data</h2>

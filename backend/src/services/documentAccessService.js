@@ -18,6 +18,8 @@ export const DOCUMENT_ACTIONS = Object.freeze({
   REJECT: "reject",
   REQUEST_REUPLOAD: "request_reupload",
   REPLACE: "replace",
+  UPLOAD: "upload",
+  DELETE: "delete",
 });
 
 const DOCUMENT_COLLECTIONS = ["files", "additionalDocuments", "completionDocuments"];
@@ -50,8 +52,12 @@ export const getDocumentId = (document, collection = "files") => {
 const hasApplicationAccess = ({ userId, role, application }) => {
   if (!userId || !role || !application) return false;
   if (role === ROLES.ADMIN) return true;
+  if (application.isDeleted) return false;
   if (role === ROLES.CUSTOMER) return ownerId(application) === userId;
-  if (role === ROLES.EXPERT) return expertId(application) === userId;
+  if (role === ROLES.EXPERT) {
+    return (!application.assignmentType || application.assignmentType === ASSIGNMENT_TYPES.EXPERT)
+      && expertId(application) === userId;
+  }
   if (role === ROLES.PARTNER) {
     return application.assignmentType === ASSIGNMENT_TYPES.PARTNER && application.assignedPartnerId === userId;
   }
@@ -60,10 +66,13 @@ const hasApplicationAccess = ({ userId, role, application }) => {
 
 export const canAccessApplicationDocument = ({ userId, role, application, document, action }) => {
   if (!hasApplicationAccess({ userId, role, application })) return false;
+  if (document?.deletedAt && action !== DOCUMENT_ACTIONS.DELETE) return false;
   if (READ_ACTIONS.has(action)) return true;
-  if (REVIEW_ACTIONS.has(action)) return role === ROLES.ADMIN;
+  if (REVIEW_ACTIONS.has(action)) return [ROLES.ADMIN, ROLES.EXPERT, ROLES.PARTNER].includes(role);
+  if (action === DOCUMENT_ACTIONS.UPLOAD) return [ROLES.ADMIN, ROLES.CUSTOMER, ROLES.EXPERT, ROLES.PARTNER].includes(role);
+  if (action === DOCUMENT_ACTIONS.DELETE) return role === ROLES.ADMIN;
   if (action === DOCUMENT_ACTIONS.REPLACE) {
-    return Boolean(document?.replacementRequested) && [ROLES.CUSTOMER, ROLES.PARTNER].includes(role);
+    return Boolean(document?.replacementRequested) && [ROLES.CUSTOMER, ROLES.PARTNER, ROLES.EXPERT, ROLES.ADMIN].includes(role);
   }
   return false;
 };
@@ -92,6 +101,7 @@ const permissionSet = ({ userId, role, application, document }) => ({
   canVerify: canAccessApplicationDocument({ userId, role, application, document, action: DOCUMENT_ACTIONS.VERIFY }),
   canRequestReupload: canAccessApplicationDocument({ userId, role, application, document, action: DOCUMENT_ACTIONS.REQUEST_REUPLOAD }),
   canReplace: canAccessApplicationDocument({ userId, role, application, document, action: DOCUMENT_ACTIONS.REPLACE }),
+  canDelete: canAccessApplicationDocument({ userId, role, application, document, action: DOCUMENT_ACTIONS.DELETE }),
 });
 
 export const toSafeDocumentMetadata = ({ userId, role, application, document, collection }) => ({
@@ -107,6 +117,12 @@ export const toSafeDocumentMetadata = ({ userId, role, application, document, co
   verificationRemark: document.verificationRemark || "",
   replacementRequested: Boolean(document.replacementRequested || document.status === "replacement_requested"),
   isCurrent: document.isCurrent !== false,
+  uploadedBy: document.uploadedBy || "",
+  uploadedByRole: document.uploadedByRole || "",
+  deletedAt: document.deletedAt || null,
+  verificationHistory: (document.verificationHistory || []).map(({ status, remark, reviewedBy, reviewedAt }) => ({
+    status, remark, reviewedBy, reviewedAt,
+  })),
   ...permissionSet({ userId, role, application, document }),
 });
 
@@ -185,6 +201,11 @@ export const updateDocumentVerification = async ({ applicationId, documentId, us
       status: timelineStatus(application),
       remarks: `${event.title}: ${document.label || document.originalName}${cleanRemark ? ` — ${cleanRemark}` : ""}`,
       updatedBy: userId,
+      actorRole: role,
+      eventType: "verification",
+      action: event.type,
+      visibility: "public",
+      metadata: { documentId: getDocumentId(document, collection), verificationStatus: cleanStatus },
     }], { session });
     const customerUserId = ownerId(application);
     if (customerUserId) await createApplicationNotification({
@@ -254,6 +275,10 @@ export const replaceApplicationDocument = async ({ applicationId, documentId, us
         status: timelineStatus(application),
         remarks: `Replacement document uploaded: ${document.label || document.originalName}`,
         updatedBy: userId,
+        actorRole: role,
+        eventType: "document",
+        action: "document_replaced",
+        visibility: "public",
       }], { session });
       const recipients = [];
       if (role !== ROLES.CUSTOMER && ownerId(application)) recipients.push([ownerId(application), ROLES.CUSTOMER]);
@@ -278,4 +303,97 @@ export const replaceApplicationDocument = async ({ applicationId, documentId, us
     if (uploaded?.public_id) await removeUploadedFiles([{ publicId: uploaded.public_id, resourceType: uploaded.resource_type, deliveryType: uploaded.type || "authenticated" }]);
     throw error;
   }
+};
+
+export const uploadAdditionalApplicationDocument = async ({ applicationId, userId, role, file, label }) => {
+  validateReplacementFile(file);
+  const cleanLabel = String(label || "Additional Document").replace(/[<>]/g, "").trim().slice(0, 120);
+  if (!cleanLabel) throw new ApiError(400, "Document label is required");
+  const initialApplication = await loadAuthorizedApplication({ applicationId, userId, role });
+  if (!canAccessApplicationDocument({ userId, role, application: initialApplication, action: DOCUMENT_ACTIONS.UPLOAD })) {
+    throw new ApiError(403, "You do not have permission to upload documents");
+  }
+  let uploaded;
+  try {
+    uploaded = await uploadBuffer(file, initialApplication.applicationNumber, "additional-documents");
+    let result;
+    await mongoose.connection.transaction(async (session) => {
+      const application = await loadAuthorizedApplication({ applicationId, userId, role, session });
+      const documentData = {
+        fieldName: `additionalDocument__${Date.now()}`,
+        fieldKey: "additionalDocument",
+        label: cleanLabel,
+        customLabel: cleanLabel,
+        documentType: "additional",
+        originalName: String(file.originalname || "document").replace(/[\\/<>:"|?*\u0000-\u001F]/g, "_").slice(0, 180),
+        publicId: uploaded.public_id,
+        secureUrl: uploaded.secure_url,
+        resourceType: uploaded.resource_type,
+        deliveryType: uploaded.type || "authenticated",
+        format: uploaded.format || String(file.originalname).split(".").pop().toLowerCase(),
+        size: uploaded.bytes ?? file.size,
+        mimeType: file.mimetype,
+        required: false,
+        status: "uploaded",
+        source: "additional",
+        uploadedBy: userId,
+        uploadedByRole: role,
+        verificationStatus: "pending",
+        uploadedAt: new Date(),
+      };
+      application.additionalDocuments.push(documentData);
+      await application.save({ session });
+      const document = application.additionalDocuments[application.additionalDocuments.length - 1];
+      await ApplicationTimeline.create([{
+        application: application._id,
+        status: timelineStatus(application),
+        remarks: `Document uploaded: ${cleanLabel}`,
+        updatedBy: userId,
+        actorRole: role,
+        eventType: "document",
+        action: "document_uploaded",
+        visibility: "public",
+        metadata: { documentId: getDocumentId(document, "additionalDocuments") },
+      }], { session });
+      result = toSafeDocumentMetadata({ userId, role, application, document, collection: "additionalDocuments" });
+    });
+    return result;
+  } catch (error) {
+    if (uploaded?.public_id) {
+      await removeUploadedFiles([{ publicId: uploaded.public_id, resourceType: uploaded.resource_type, deliveryType: uploaded.type || "authenticated" }]);
+    }
+    throw error;
+  }
+};
+
+export const deleteApplicationDocument = async ({ applicationId, documentId, userId, role }) => {
+  let removed;
+  let storage;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadAuthorizedApplication({ applicationId, userId, role, session });
+    const { collection, document } = findDocument(application, documentId);
+    if (!canAccessApplicationDocument({ userId, role, application, document, action: DOCUMENT_ACTIONS.DELETE })) {
+      throw new ApiError(403, "Only administrators can delete application documents");
+    }
+    if (document.deletedAt) throw new ApiError(409, "Document is already deleted");
+    document.deletedAt = new Date();
+    document.deletedBy = userId;
+    document.isCurrent = false;
+    await application.save({ session });
+    await ApplicationTimeline.create([{
+      application: application._id,
+      status: timelineStatus(application),
+      remarks: `Document deleted: ${document.label || document.originalName}`,
+      updatedBy: userId,
+      actorRole: role,
+      eventType: "document",
+      action: "document_deleted",
+      visibility: "internal",
+      metadata: { documentId, collection },
+    }], { session });
+    storage = { publicId: document.publicId, resourceType: document.resourceType, deliveryType: document.deliveryType };
+    removed = toSafeDocumentMetadata({ userId, role, application, document, collection });
+  });
+  await removeUploadedFiles([storage]);
+  return removed;
 };

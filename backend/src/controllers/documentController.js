@@ -1,9 +1,11 @@
 import { writeAuditLog } from "../services/auditService.js";
 import {
   createDocumentAccess,
+  deleteApplicationDocument,
   DOCUMENT_ACTIONS,
   listApplicationDocuments,
   replaceApplicationDocument,
+  uploadAdditionalApplicationDocument,
   updateDocumentVerification,
 } from "../services/documentAccessService.js";
 
@@ -41,5 +43,32 @@ export const replaceDocument = async (req, res, next) => {
     const document = await replaceApplicationDocument({ applicationId: req.params.applicationId, documentId: req.params.documentId, userId: req.auth.userId, role: req.auth.role, file: req.file });
     await writeAuditLog({ req, action: "document_replaced", entityType: "application_document", entityId: document.id, summary: "Replacement application document uploaded", metadata: { applicationId: req.params.applicationId } });
     return noStore(res).status(201).json({ success: true, document });
+  } catch (error) { return next(error); }
+};
+
+export const uploadAdditionalDocument = async (req, res, next) => {
+  try {
+    const document = await uploadAdditionalApplicationDocument({
+      applicationId: req.params.applicationId,
+      userId: req.auth.userId,
+      role: req.auth.role,
+      file: req.file,
+      label: req.body.label,
+    });
+    await writeAuditLog({ req, action: "document_uploaded", entityType: "application_document", entityId: document.id, summary: "Additional application document uploaded", metadata: { applicationId: req.params.applicationId } });
+    return noStore(res).status(201).json({ success: true, document });
+  } catch (error) { return next(error); }
+};
+
+export const deleteDocument = async (req, res, next) => {
+  try {
+    const document = await deleteApplicationDocument({
+      applicationId: req.params.applicationId,
+      documentId: req.params.documentId,
+      userId: req.auth.userId,
+      role: req.auth.role,
+    });
+    await writeAuditLog({ req, action: "document_deleted", entityType: "application_document", entityId: document.id, summary: "Application document deleted", metadata: { applicationId: req.params.applicationId } });
+    return noStore(res).status(200).json({ success: true, document });
   } catch (error) { return next(error); }
 };

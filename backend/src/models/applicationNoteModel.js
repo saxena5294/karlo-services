@@ -6,7 +6,7 @@ const applicationNoteSchema = new mongoose.Schema(
     remarks: { type: String, required: true, trim: true, maxlength: 2000 },
     createdBy: { type: String, required: true, trim: true },
   },
-  { timestamps: { createdAt: true, updatedAt: false }, collection: "applicationnotes" }
+  { timestamps: true, collection: "applicationnotes" }
 );
 
 applicationNoteSchema.index({ application: 1, createdAt: -1 });

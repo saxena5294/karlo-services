@@ -14,15 +14,20 @@ test("document access follows customer ownership, current assignments and admin 
   assert.equal(allowed(ROLES.CUSTOMER, "customer_2", DOCUMENT_ACTIONS.PREVIEW), false);
   assert.equal(allowed(ROLES.PARTNER, "partner_1", DOCUMENT_ACTIONS.DOWNLOAD), true);
   assert.equal(allowed(ROLES.PARTNER, "partner_2", DOCUMENT_ACTIONS.DOWNLOAD), false);
-  assert.equal(allowed(ROLES.EXPERT, "expert_1", DOCUMENT_ACTIONS.PREVIEW), true);
+  assert.equal(allowed(ROLES.EXPERT, "expert_1", DOCUMENT_ACTIONS.PREVIEW, document, { ...application, assignmentType: "expert" }), true);
   assert.equal(allowed(ROLES.EXPERT, "expert_2", DOCUMENT_ACTIONS.PREVIEW), false);
   assert.equal(allowed(ROLES.ADMIN, "admin_1", DOCUMENT_ACTIONS.PREVIEW), true);
   assert.equal(allowed(undefined, undefined, DOCUMENT_ACTIONS.PREVIEW), false);
 });
 
-test("only admins review documents and replacements require an explicit request", () => {
+test("admins and current assignees review documents while replacements require an explicit request", () => {
   assert.equal(allowed(ROLES.ADMIN, "admin_1", DOCUMENT_ACTIONS.VERIFY), true);
+  assert.equal(allowed(ROLES.PARTNER, "partner_1", DOCUMENT_ACTIONS.VERIFY), true);
   assert.equal(allowed(ROLES.EXPERT, "expert_1", DOCUMENT_ACTIONS.VERIFY), false);
+  assert.equal(allowed(ROLES.EXPERT, "expert_1", DOCUMENT_ACTIONS.VERIFY, document, { ...application, assignmentType: "expert" }), true);
+  assert.equal(allowed(ROLES.CUSTOMER, "customer_1", DOCUMENT_ACTIONS.VERIFY), false);
+  assert.equal(allowed(ROLES.ADMIN, "admin_1", DOCUMENT_ACTIONS.DELETE), true);
+  assert.equal(allowed(ROLES.PARTNER, "partner_1", DOCUMENT_ACTIONS.DELETE), false);
   assert.equal(allowed(ROLES.CUSTOMER, "customer_1", DOCUMENT_ACTIONS.REPLACE), false);
   assert.equal(allowed(ROLES.CUSTOMER, "customer_1", DOCUMENT_ACTIONS.REPLACE, { ...document, replacementRequested: true }), true);
   assert.equal(allowed(ROLES.PARTNER, "partner_1", DOCUMENT_ACTIONS.REPLACE, { ...document, replacementRequested: true }), true);

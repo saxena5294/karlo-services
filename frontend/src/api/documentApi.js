@@ -12,3 +12,11 @@ export const uploadDocumentReplacement = (applicationId, documentId, file, onUpl
   formData.append("file", file);
   return data(API.post(path(applicationId, `/${encodeURIComponent(documentId)}/replacement`), formData, { onUploadProgress }));
 };
+export const uploadAdditionalDocument = (applicationId, file, label, onUploadProgress) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("label", label);
+  return data(API.post(path(applicationId), formData, { onUploadProgress }));
+};
+export const deleteApplicationDocument = (applicationId, documentId) =>
+  data(API.delete(path(applicationId, `/${encodeURIComponent(documentId)}`)));

@@ -38,6 +38,8 @@ export const applicationFileSchema = new mongoose.Schema(
     replacementRequested: { type: Boolean, default: false },
     replacedDocumentId: { type: String, trim: true, default: "" },
     isCurrent: { type: Boolean, default: true },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: String, trim: true, default: "" },
     verificationHistory: { type: [{ status: { type: String, enum: ["pending", "verified", "rejected", "reupload_required"], required: true }, remark: { type: String, trim: true, maxlength: 1000, default: "" }, reviewedBy: { type: String, trim: true, required: true }, reviewedAt: { type: Date, required: true } }], default: [] },
   },
   { _id: true }
@@ -107,6 +109,15 @@ const applicationSchema = new mongoose.Schema(
     customerId: { type: String, trim: true, default: null },
     assignedBy: { type: String, trim: true, default: null },
     assignedAt: { type: Date, default: null },
+    priority: { type: String, enum: ["low", "medium", "high", "urgent"], default: "medium", index: true },
+    expectedCompletionAt: { type: Date, default: null, index: true },
+    actualCompletionAt: { type: Date, default: null },
+    isArchived: { type: Boolean, default: false, index: true },
+    archivedAt: { type: Date, default: null },
+    archivedBy: { type: String, trim: true, default: "" },
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: String, trim: true, default: "" },
     status: {
       type: String,
       enum: [
@@ -158,6 +169,9 @@ applicationSchema.index({ customerId: 1, createdAt: -1 });
 applicationSchema.index({ assignmentType: 1, assignedExpertId: 1, createdAt: -1 });
 applicationSchema.index({ assignmentType: 1, assignedPartnerId: 1, createdAt: -1 });
 applicationSchema.index({ status: 1, createdAt: -1 });
+applicationSchema.index({ isArchived: 1, priority: 1, expectedCompletionAt: 1 });
+applicationSchema.index({ isDeleted: 1, isArchived: 1, createdAt: -1 });
+applicationSchema.index({ service: 1, status: 1, createdAt: -1 });
 applicationSchema.index({ customerUserId: 1, submissionKey: 1 }, { unique: true, sparse: true });
 
 export const Application = mongoose.model("Application", applicationSchema);

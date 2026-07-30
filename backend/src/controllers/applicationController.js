@@ -115,15 +115,16 @@ export const getAdminApplications = async (req, res, next) => {
 export const trackApplication = async (req, res, next) => {
   try {
     const details = await getApplicationDetailsService(req.params.applicationNumber);
+    const publicTimeline = details.timeline.filter(({ visibility }) => visibility !== "internal");
     const application = {
       applicationNumber: details.applicationNumber,
       service: details.service,
       status: details.status,
-      timeline: details.timeline,
+      timeline: publicTimeline,
       createdAt: details.createdAt,
       updatedAt: details.updatedAt,
       // Retained as a response alias so the existing public tracker keeps working.
-      statusHistory: details.timeline.map(({ status, remarks, createdAt }) => ({
+      statusHistory: publicTimeline.map(({ status, remarks, createdAt }) => ({
         status,
         message: remarks,
         changedAt: createdAt,

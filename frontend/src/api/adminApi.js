@@ -9,6 +9,11 @@ export const assignApplication = (id, data) => getData(API.patch(`/admin/applica
 export const updateApplicationStatus = (id, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/status`, data));
 export const addApplicationRemark = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/remarks`, data));
 export const requestApplicationDocuments = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/request-documents`, data));
+export const updateApplicationWorkflow = (id, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/workflow`, data));
+export const createApplicationNote = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/notes`, data));
+export const updateApplicationNote = (id, noteId, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, data));
+export const deleteApplicationNote = (id, noteId) => getData(API.delete(`/admin/applications/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`));
+export const deleteAdminApplication = (id) => getData(API.delete(`/admin/applications/${encodeURIComponent(id)}`));
 export const publishApplicationLead = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/publish-lead`, data));
 export const getAdminCustomers = (params = {}) => getData(API.get("/admin/customers", { params }));
 export const getAdminCustomer = (id) => getData(API.get(`/admin/customers/${encodeURIComponent(id)}`));
