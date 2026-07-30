@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import mongoose from "mongoose";
 import streamifier from "streamifier";
 import { getCloudinary } from "../config/cloudinary.js";
@@ -14,8 +13,10 @@ import {
 } from "../constants/fulfillmentConstants.js";
 import { ROLES } from "../constants/roleConstants.js";
 import { Application } from "../models/applicationModel.js";
+import { ApplicationCounter } from "../models/applicationCounterModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
 import { ApplicationAssignment } from "../models/applicationAssignmentModel.js";
+import { ApplicationWorkflowConfig } from "../models/applicationWorkflowConfigModel.js";
 import { ExpertProfile } from "../models/expertProfileModel.js";
 import { PartnerProfile } from "../models/partnerProfileModel.js";
 import { Service } from "../models/serviceModel.js";
@@ -39,8 +40,48 @@ export const ASSIGNEE_STATUS_VALUES = new Set([
   APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW,
 ]);
 
-const createApplicationNumber = () =>
-  `KARLO-${new Date().getFullYear()}-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+export const formatApplicationNumber = (year, sequence) =>
+  `KARLO-${year}-${String(sequence).padStart(6, "0")}`;
+
+export const createApplicationNumber = async (date = new Date()) => {
+  const year = date.getFullYear();
+  // Reservations are intentionally outside the application transaction. A failed
+  // submission can leave a harmless gap, while duplicate numbers remain impossible.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    let counter;
+    try {
+      counter = await ApplicationCounter.findOneAndUpdate(
+        { year },
+        { $inc: { sequence: 1 } },
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
+      ).lean();
+    } catch (error) {
+      // Two first requests for a new year can race on the unique upsert. The
+      // losing request simply retries against the counter created by the winner.
+      if (error?.code === 11000) continue;
+      throw error;
+    }
+    const applicationNumber = formatApplicationNumber(year, counter.sequence);
+    if (!await Application.exists({ applicationNumber })) return applicationNumber;
+    const latest = await Application.findOne({
+      applicationNumber: { $regex: `^KARLO-${year}-\\d{6,}$` },
+    }).select("applicationNumber").sort({ applicationNumber: -1 }).lean();
+    const latestSequence = Number(latest?.applicationNumber?.split("-").at(-1));
+    if (Number.isSafeInteger(latestSequence)) {
+      await ApplicationCounter.updateOne({ year }, { $max: { sequence: latestSequence } });
+    }
+  }
+  throw new ApiError(503, "Unable to reserve an application number");
+};
+
+const allowedTransitionsFor = async (status) => {
+  const configuration = await ApplicationWorkflowConfig.findOne({ key: "default" })
+    .select("statuses transitions")
+    .lean();
+  if (!configuration) return APPLICATION_STATUS_TRANSITIONS[status] || [];
+  if (!configuration.statuses.includes(status)) return [];
+  return configuration.transitions.find((transition) => transition.from === status)?.to || [];
+};
 
 export const uploadBuffer = (file, applicationNumber, folder = "applications", { deliveryType = "authenticated" } = {}) =>
   new Promise((resolve, reject) => {
@@ -485,7 +526,7 @@ const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, 
     throw new ApiError(409, `Application is already ${nextStatus}`);
   }
 
-  const allowedTransitions = APPLICATION_STATUS_TRANSITIONS[currentStatus] || [];
+  const allowedTransitions = await allowedTransitionsFor(currentStatus);
   if (!allowedTransitions.includes(nextStatus)) {
     throw new ApiError(
       409,
@@ -495,6 +536,12 @@ const applyStatusChange = async ({ application, nextStatus, remarks, updatedBy, 
   }
 
   application.status = nextStatus;
+  if (nextStatus === APPLICATION_STATUSES.ARCHIVED) {
+    application.statusBeforeArchive = currentStatus;
+    application.isArchived = true;
+    application.archivedAt = new Date();
+    application.archivedBy = updatedBy;
+  }
   if (nextStatus === APPLICATION_STATUSES.COMPLETED && !application.actualCompletionAt) {
     application.actualCompletionAt = new Date();
   }
@@ -625,7 +672,7 @@ export const submitApplication = async ({
   }
   const mobileNumber = String(body.mobileNumber).trim();
 
-  const applicationNumber = createApplicationNumber();
+  const applicationNumber = await createApplicationNumber();
   const uploadedFiles = [];
   let additionalLabels = {};
   try { additionalLabels = JSON.parse(body.additionalDocumentLabels || "{}"); } catch { throw new ApiError(400, "Additional document labels are invalid"); }

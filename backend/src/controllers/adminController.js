@@ -53,6 +53,29 @@ export const deleteApplication = send(async (req) => {
   await writeAuditLog({ req, action: "application.delete", entityType: "application", entityId: application._id, summary: `Application ${application.applicationNumber} soft-deleted` });
   return { application };
 });
+export const restoreApplication = send(async (req) => {
+  const application = await workflowService.restoreApplication({ id: req.params.id, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: "application.restore", entityType: "application", entityId: application._id, summary: `Application ${application.applicationNumber} restored` });
+  return { application };
+});
+export const applicationWorkflowConfiguration = send(async () => ({
+  workflow: await workflowService.getApplicationWorkflowConfiguration(),
+}));
+export const saveApplicationWorkflowConfiguration = send(async (req) => {
+  const workflow = await workflowService.updateApplicationWorkflowConfiguration({
+    adminUserId: req.auth.userId,
+    payload: req.body,
+  });
+  await writeAuditLog({
+    req,
+    action: "application.workflow_configuration",
+    entityType: "application_workflow",
+    entityId: workflow._id,
+    summary: "Application lifecycle configuration updated",
+    after: { name: workflow.name, statuses: workflow.statuses, transitions: workflow.transitions },
+  });
+  return { workflow };
+});
 export const publishLead = send(async (req) => { validateBody(req, ["city", "pincode", "safeRequirementSummary", "leadPrice", "status", "expiresAt"]); const lead = await publishApplicationLead({ applicationId: req.params.id, adminUserId: req.auth.userId, payload: req.body }); await writeAuditLog({ req, action: lead.status === "open" ? "lead.publish" : "lead.draft", entityType: "lead", entityId: lead._id, summary: `${lead.status === "open" ? "Published" : "Saved"} lead for ${lead.applicationNumber}`, after: lead }); return { lead }; }, 201);
 export const listPartners = send(async (req) => listPartnerProfilesForAdmin(req.query));
 export const verifyPartner = send(async (req) => { validateBody(req, ["verificationStatus"]); const partner = await updatePartnerVerification({ id: req.params.id, verificationStatus: req.body.verificationStatus }); await writeAuditLog({ req, action: "partner.verification", entityType: "partner", entityId: partner._id, summary: `Partner verification changed to ${partner.verificationStatus}`, after: { verificationStatus: partner.verificationStatus } }); return { partner }; });

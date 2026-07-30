@@ -5,6 +5,9 @@ import { Application } from "../src/models/applicationModel.js";
 import { ApplicationComment } from "../src/models/applicationCommentModel.js";
 import { ApplicationNote } from "../src/models/applicationNoteModel.js";
 import { ApplicationTimeline } from "../src/models/applicationTimelineModel.js";
+import { ApplicationCounter } from "../src/models/applicationCounterModel.js";
+import { ApplicationWorkflowConfig } from "../src/models/applicationWorkflowConfigModel.js";
+import { formatApplicationNumber } from "../src/services/applicationService.js";
 import { APPLICATION_PRIORITIES, buildDocumentChecklist } from "../src/services/applicationWorkflowService.js";
 
 test("application workflow fields use production-safe defaults and indexes", () => {
@@ -46,7 +49,7 @@ test("document checklist counts current uploaded, verified, rejected, pending, a
 
 test("completed applications can be delivered while both states remain closed to assignee updates", () => {
   assert.ok(APPLICATION_STATUS_TRANSITIONS[APPLICATION_STATUSES.COMPLETED].includes(APPLICATION_STATUSES.DELIVERED));
-  assert.deepEqual(APPLICATION_STATUS_TRANSITIONS[APPLICATION_STATUSES.DELIVERED], []);
+  assert.deepEqual(APPLICATION_STATUS_TRANSITIONS[APPLICATION_STATUSES.DELIVERED], [APPLICATION_STATUSES.ARCHIVED]);
 });
 
 test("invalid workflow enums are rejected", () => {
@@ -54,4 +57,23 @@ test("invalid workflow enums are rejected", () => {
   assert.ok(application.validateSync()?.errors.priority);
   const comment = new ApplicationComment({ application: "67f000000000000000000001", body: "Visible", visibility: "customer", authorUserId: "admin_1", authorRole: "admin" });
   assert.ok(comment.validateSync()?.errors.visibility);
+});
+
+test("application numbers use a fixed-width yearly sequence backed by a unique counter", () => {
+  assert.equal(formatApplicationNumber(2026, 1), "KARLO-2026-000001");
+  assert.equal(formatApplicationNumber(2026, 999999), "KARLO-2026-999999");
+  assert.equal(ApplicationCounter.schema.path("year").options.unique, true);
+  assert.equal(Application.schema.path("applicationNumber").options.unique, true);
+});
+
+test("configurable workflows accept unique enabled transitions and reject self transitions", async () => {
+  const workflow = new ApplicationWorkflowConfig({
+    updatedBy: "admin_1",
+    statuses: [APPLICATION_STATUSES.SUBMITTED, APPLICATION_STATUSES.IN_REVIEW],
+    transitions: [{ from: APPLICATION_STATUSES.SUBMITTED, to: [APPLICATION_STATUSES.IN_REVIEW] }],
+  });
+  await workflow.validate();
+
+  workflow.transitions = [{ from: APPLICATION_STATUSES.SUBMITTED, to: [APPLICATION_STATUSES.SUBMITTED] }];
+  await assert.rejects(workflow.validate(), /cannot transition to itself/);
 });

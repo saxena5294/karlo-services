@@ -53,7 +53,7 @@ const assertOnlyFields = (payload, allowed) => {
 };
 
 const buildApplicationFilter = async (query) => {
-  const allowedQuery = new Set(["page", "limit", "status", "serviceId", "expertId", "partnerId", "assignmentType", "dateFrom", "dateTo", "search", "priority", "archived", "deleted", "sortBy", "sortOrder"]);
+  const allowedQuery = new Set(["page", "limit", "status", "serviceId", "expertId", "partnerId", "assignmentType", "dateFrom", "dateTo", "processingDaysMin", "processingDaysMax", "search", "priority", "archived", "deleted", "sortBy", "sortOrder"]);
   const unexpected = Object.keys(query).filter((key) => !allowedQuery.has(key));
   if (unexpected.length) throw new ApiError(400, `Unexpected query parameters: ${unexpected.join(", ")}`);
   const filter = {};
@@ -96,6 +96,22 @@ const buildApplicationFilter = async (query) => {
     if (Object.values(filter.createdAt).some((date) => Number.isNaN(date.getTime()))) {
       throw new ApiError(400, "Use valid YYYY-MM-DD date filters");
     }
+  }
+  if (query.processingDaysMin || query.processingDaysMax) {
+    const minimum = query.processingDaysMin ? Number(query.processingDaysMin) : 0;
+    const maximum = query.processingDaysMax ? Number(query.processingDaysMax) : null;
+    if (!Number.isFinite(minimum) || minimum < 0 || (maximum !== null && (!Number.isFinite(maximum) || maximum < minimum))) {
+      throw new ApiError(400, "Processing-day filters must be non-negative and maximum must be at least minimum");
+    }
+    const elapsedDays = {
+      $divide: [
+        { $subtract: [{ $ifNull: ["$actualCompletionAt", "$$NOW"] }, "$createdAt"] },
+        86400000,
+      ],
+    };
+    filter.$expr = maximum === null
+      ? { $gte: [elapsedDays, minimum] }
+      : { $and: [{ $gte: [elapsedDays, minimum] }, { $lte: [elapsedDays, maximum] }] };
   }
   if (query.search?.trim()) {
     const pattern = escapeRegex(query.search.trim());
@@ -433,19 +449,29 @@ export const updateAdminServiceForm = async (serviceId, payload) => {
 };
 
 export const getAdminReports = async () => {
-  const [byStatus, byService, byExpert, byDate, totals, leadsByStatus, leadsByCity, partnerPerformance] = await Promise.all([
-    Application.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
-    Application.aggregate([{ $group: { _id: "$service", count: { $sum: 1 } } }, { $lookup: { from: "services", localField: "_id", foreignField: "_id", as: "service" } }, { $unwind: { path: "$service", preserveNullAndEmptyArrays: true } }, { $project: { _id: 0, serviceId: "$_id", serviceTitle: { $ifNull: ["$service.title", "Unknown service"] }, count: 1 } }, { $sort: { count: -1 } }]),
-    Application.aggregate([{ $match: { assignedExpertId: { $nin: [null, ""] } } }, { $group: { _id: "$assignedExpertId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
-    Application.aggregate([{ $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 30 }]),
-    Application.aggregate([{ $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] } }, averageProcessingMs: { $avg: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, { $subtract: ["$updatedAt", "$createdAt"] }, null] } } } }]),
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const [byStatus, byService, byExpert, byPartner, byDate, totals, todayApplications, leadsByStatus, leadsByCity, partnerPerformance] = await Promise.all([
+    Application.aggregate([{ $match: { isDeleted: { $ne: true } } }, { $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { isDeleted: { $ne: true } } }, { $group: { _id: "$service", count: { $sum: 1 } } }, { $lookup: { from: "services", localField: "_id", foreignField: "_id", as: "service" } }, { $unwind: { path: "$service", preserveNullAndEmptyArrays: true } }, { $project: { _id: 0, serviceId: "$_id", serviceTitle: { $ifNull: ["$service.title", "Unknown service"] }, count: 1 } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { assignedExpertId: { $nin: [null, ""] }, isDeleted: { $ne: true } } }, { $group: { _id: "$assignedExpertId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { assignedPartnerId: { $nin: [null, ""] }, isDeleted: { $ne: true } } }, { $group: { _id: "$assignedPartnerId", count: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } } } }, { $sort: { count: -1 } }]),
+    Application.aggregate([{ $match: { isDeleted: { $ne: true } } }, { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } }, { $sort: { _id: -1 } }, { $limit: 30 }]),
+    Application.aggregate([{ $match: { isDeleted: { $ne: true } } }, { $group: { _id: null, total: { $sum: 1 }, completed: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } }, rejected: { $sum: { $cond: [{ $in: ["$status", ["Rejected", "rejected"]] }, 1, 0] } }, averageProcessingMs: { $avg: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, { $subtract: [{ $ifNull: ["$actualCompletionAt", "$updatedAt"] }, "$createdAt"] }, null] } } } }]),
+    Application.countDocuments({ isDeleted: { $ne: true }, createdAt: { $gte: today } }),
     Lead.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Lead.aggregate([{ $group: { _id: "$city", count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
     Lead.aggregate([{ $match: { acceptedByPartnerId: { $nin: [null, ""] } } }, { $group: { _id: "$acceptedByPartnerId", accepted: { $sum: 1 }, completed: { $sum: { $cond: [{ $eq: ["$status", "completed"] }, 1, 0] } } } }, { $sort: { accepted: -1 } }]),
   ]);
   const summary = totals[0] || { total: 0, completed: 0, rejected: 0, averageProcessingMs: 0 };
   const leadTotal = leadsByStatus.reduce((sum, item) => sum + item.count, 0); const acceptedTotal = leadsByStatus.filter((item) => ["accepted", "completed"].includes(item._id)).reduce((sum, item) => sum + item.count, 0);
-  return { byStatus, byService, byExpert, byDate, leadsByStatus, leadsByCity, partnerPerformance, leadAcceptanceRate: leadTotal ? (acceptedTotal / leadTotal) * 100 : 0, customerGrowth: byDate, servicePopularity: byService, completionRate: summary.total ? (summary.completed / summary.total) * 100 : 0, rejectionRate: summary.total ? (summary.rejected / summary.total) * 100 : 0, averageProcessingMs: summary.averageProcessingMs || 0 };
+  const statusCount = (statuses) => byStatus
+    .filter((item) => statuses.includes(item._id))
+    .reduce((sum, item) => sum + item.count, 0);
+  const completed = statusCount(["Completed", "Delivered", "completed"]);
+  const rejected = statusCount(["Rejected", "rejected"]);
+  const processing = statusCount(["In Review", "Verification Pending", "Verified", "Processing", "Awaiting Admin Review", "Approved", "under_review", "processing"]);
+  return { todayApplications, total: summary.total || 0, pending: Math.max((summary.total || 0) - completed - rejected - statusCount(["Cancelled", "Archived"]), 0), processing, completed, rejected, byStatus, byService, byExpert, byPartner, byDate, leadsByStatus, leadsByCity, partnerPerformance, leadAcceptanceRate: leadTotal ? (acceptedTotal / leadTotal) * 100 : 0, customerGrowth: byDate, servicePopularity: byService, completionRate: summary.total ? (summary.completed / summary.total) * 100 : 0, rejectionRate: summary.total ? (summary.rejected / summary.total) * 100 : 0, averageProcessingMs: summary.averageProcessingMs || 0 };
 };
 
 export const getAdminDashboardSummary = async () => {

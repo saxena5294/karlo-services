@@ -13,6 +13,8 @@ router.use(developmentAuth, requireRole(ROLES.ADMIN));
 
 router.get("/dashboard-summary", controller.dashboardSummary);
 router.get("/applications", controller.listApplications);
+router.get("/application-workflow", controller.applicationWorkflowConfiguration);
+router.put("/application-workflow", controller.saveApplicationWorkflowConfiguration);
 router.get("/applications/:id", controller.applicationDetails);
 router.get("/assignments", controller.assignments);
 router.patch("/applications/:id/assign", controller.assignApplication);
@@ -24,6 +26,7 @@ router.post("/applications/:id/notes", controller.createApplicationNote);
 router.patch("/applications/:id/notes/:noteId", controller.updateApplicationNote);
 router.delete("/applications/:id/notes/:noteId", controller.deleteApplicationNote);
 router.delete("/applications/:id", controller.deleteApplication);
+router.post("/applications/:id/restore", controller.restoreApplication);
 router.post("/applications/:id/publish-lead", requireLeadMarketplace, controller.publishLead);
 router.get("/customers", controller.listCustomers);
 router.get("/customers/:id", controller.customerDetails);

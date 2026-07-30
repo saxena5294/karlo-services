@@ -115,6 +115,7 @@ const applicationSchema = new mongoose.Schema(
     isArchived: { type: Boolean, default: false, index: true },
     archivedAt: { type: Date, default: null },
     archivedBy: { type: String, trim: true, default: "" },
+    statusBeforeArchive: { type: String, enum: [...APPLICATION_STATUS_VALUES, null], default: null },
     isDeleted: { type: Boolean, default: false, index: true },
     deletedAt: { type: Date, default: null },
     deletedBy: { type: String, trim: true, default: "" },

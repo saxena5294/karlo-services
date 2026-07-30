@@ -1,11 +1,16 @@
 import mongoose from "mongoose";
-import { APPLICATION_STATUSES, APPLICATION_STATUS_VALUES } from "../constants/applicationConstants.js";
+import {
+  APPLICATION_STATUSES,
+  APPLICATION_STATUS_TRANSITIONS,
+  APPLICATION_STATUS_VALUES,
+} from "../constants/applicationConstants.js";
 import { ASSIGNMENT_TYPES } from "../constants/fulfillmentConstants.js";
 import { ROLES } from "../constants/roleConstants.js";
 import { Application } from "../models/applicationModel.js";
 import { ApplicationComment } from "../models/applicationCommentModel.js";
 import { ApplicationNote } from "../models/applicationNoteModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
+import { ApplicationWorkflowConfig } from "../models/applicationWorkflowConfigModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import { createApplicationNotification, sanitizeNotificationText } from "./notificationService.js";
 
@@ -157,27 +162,43 @@ export const createApplicationComment = async ({ id, userId, role, body, visibil
 
 export const updateApplicationComment = async ({ id, commentId, userId, role, body, visibility }) => {
   if (!mongoose.isValidObjectId(commentId)) throw new ApiError(404, "Comment not found");
-  const application = await loadApplication({ id, userId, role });
-  const comment = await ApplicationComment.findOne({ _id: commentId, application: application._id });
-  if (!comment) throw new ApiError(404, "Comment not found");
-  if (role !== ROLES.ADMIN && comment.authorUserId !== userId) throw new ApiError(403, "Only the author or an admin can edit this comment");
-  if (body !== undefined) comment.body = cleanText(body, "Comment");
-  if (visibility !== undefined) {
-    if (!["internal", "public"].includes(visibility)) throw new ApiError(400, "visibility must be internal or public");
-    comment.visibility = visibility;
-  }
-  comment.editedAt = new Date();
-  await comment.save();
+  let comment;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadApplication({ id, userId, role, session });
+    comment = await ApplicationComment.findOne({ _id: commentId, application: application._id }).session(session);
+    if (!comment) throw new ApiError(404, "Comment not found");
+    if (role !== ROLES.ADMIN && comment.authorUserId !== userId) throw new ApiError(403, "Only the author or an admin can edit this comment");
+    if (body !== undefined) comment.body = cleanText(body, "Comment");
+    if (visibility !== undefined) {
+      if (!["internal", "public"].includes(visibility)) throw new ApiError(400, "visibility must be internal or public");
+      comment.visibility = visibility;
+    }
+    comment.editedAt = new Date();
+    await comment.save({ session });
+    await appendEvent({
+      application, actorUserId: userId, actorRole: role, eventType: "comment",
+      action: "comment_updated", remarks: comment.visibility === "public" ? "Public comment updated" : "Internal comment updated",
+      visibility: comment.visibility, metadata: { commentId: String(comment._id) }, session,
+    });
+  });
   return comment;
 };
 
 export const deleteApplicationComment = async ({ id, commentId, userId, role }) => {
   if (!mongoose.isValidObjectId(commentId)) throw new ApiError(404, "Comment not found");
-  const application = await loadApplication({ id, userId, role });
-  const comment = await ApplicationComment.findOne({ _id: commentId, application: application._id });
-  if (!comment) throw new ApiError(404, "Comment not found");
-  if (role !== ROLES.ADMIN && comment.authorUserId !== userId) throw new ApiError(403, "Only the author or an admin can delete this comment");
-  await comment.deleteOne();
+  let comment;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadApplication({ id, userId, role, session });
+    comment = await ApplicationComment.findOne({ _id: commentId, application: application._id }).session(session);
+    if (!comment) throw new ApiError(404, "Comment not found");
+    if (role !== ROLES.ADMIN && comment.authorUserId !== userId) throw new ApiError(403, "Only the author or an admin can delete this comment");
+    await comment.deleteOne({ session });
+    await appendEvent({
+      application, actorUserId: userId, actorRole: role, eventType: "comment",
+      action: "comment_deleted", remarks: `${comment.visibility === "public" ? "Public" : "Internal"} comment deleted`,
+      visibility: "internal", metadata: { commentId: String(comment._id) }, session,
+    });
+  });
   return comment;
 };
 
@@ -210,6 +231,13 @@ export const updateApplicationWorkflow = async ({ id, adminUserId, payload }) =>
   let application;
   await mongoose.connection.transaction(async (session) => {
     application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN, session });
+    if (payload.isArchived === true && application.status !== APPLICATION_STATUSES.ARCHIVED) {
+      updates.statusBeforeArchive = application.status;
+      updates.status = APPLICATION_STATUSES.ARCHIVED;
+    } else if (payload.isArchived === false && application.status === APPLICATION_STATUSES.ARCHIVED) {
+      updates.status = application.statusBeforeArchive || APPLICATION_STATUSES.SUBMITTED;
+      updates.statusBeforeArchive = null;
+    }
     Object.assign(application, updates);
     await application.save({ session });
     const changed = Object.keys(payload).join(", ");
@@ -233,6 +261,10 @@ export const softDeleteApplication = async ({ id, adminUserId }) => {
     application.isArchived = true;
     application.archivedAt ||= application.deletedAt;
     application.archivedBy ||= adminUserId;
+    if (application.status !== APPLICATION_STATUSES.ARCHIVED) {
+      application.statusBeforeArchive = application.status;
+      application.status = APPLICATION_STATUSES.ARCHIVED;
+    }
     await application.save({ session });
     await appendEvent({
       application, actorUserId: adminUserId, actorRole: ROLES.ADMIN, eventType: "workflow",
@@ -244,25 +276,111 @@ export const softDeleteApplication = async ({ id, adminUserId }) => {
 };
 
 export const createApplicationNote = async ({ id, adminUserId, remarks }) => {
-  const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN });
-  return ApplicationNote.create({ application: application._id, remarks: cleanText(remarks, "Note"), createdBy: adminUserId });
+  let note;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN, session });
+    [note] = await ApplicationNote.create([{ application: application._id, remarks: cleanText(remarks, "Note"), createdBy: adminUserId }], { session });
+    await appendEvent({
+      application, actorUserId: adminUserId, actorRole: ROLES.ADMIN, eventType: "note",
+      action: "note_created", remarks: "Private admin note added", visibility: "internal",
+      metadata: { noteId: String(note._id) }, session,
+    });
+  });
+  return note;
 };
 
 export const updateApplicationNote = async ({ id, noteId, adminUserId, remarks }) => {
   if (!mongoose.isValidObjectId(noteId)) throw new ApiError(404, "Note not found");
-  const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN });
-  const note = await ApplicationNote.findOneAndUpdate(
-    { _id: noteId, application: application._id }, { $set: { remarks: cleanText(remarks, "Note") } },
-    { returnDocument: "after", runValidators: true }
-  ).lean();
-  if (!note) throw new ApiError(404, "Note not found");
+  let note;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN, session });
+    note = await ApplicationNote.findOneAndUpdate(
+      { _id: noteId, application: application._id }, { $set: { remarks: cleanText(remarks, "Note") } },
+      { returnDocument: "after", runValidators: true, session }
+    ).lean();
+    if (!note) throw new ApiError(404, "Note not found");
+    await appendEvent({
+      application, actorUserId: adminUserId, actorRole: ROLES.ADMIN, eventType: "note",
+      action: "note_updated", remarks: "Private admin note updated", visibility: "internal",
+      metadata: { noteId: String(note._id) }, session,
+    });
+  });
   return note;
 };
 
 export const deleteApplicationNote = async ({ id, noteId, adminUserId }) => {
   if (!mongoose.isValidObjectId(noteId)) throw new ApiError(404, "Note not found");
-  const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN });
-  const note = await ApplicationNote.findOneAndDelete({ _id: noteId, application: application._id }).lean();
-  if (!note) throw new ApiError(404, "Note not found");
+  let note;
+  await mongoose.connection.transaction(async (session) => {
+    const application = await loadApplication({ id, userId: adminUserId, role: ROLES.ADMIN, session });
+    note = await ApplicationNote.findOneAndDelete({ _id: noteId, application: application._id }, { session }).lean();
+    if (!note) throw new ApiError(404, "Note not found");
+    await appendEvent({
+      application, actorUserId: adminUserId, actorRole: ROLES.ADMIN, eventType: "note",
+      action: "note_deleted", remarks: "Private admin note deleted", visibility: "internal",
+      metadata: { noteId: String(note._id) }, session,
+    });
+  });
   return note;
+};
+
+export const restoreApplication = async ({ id, adminUserId }) => {
+  let application;
+  await mongoose.connection.transaction(async (session) => {
+    application = await Application.findOne(identifierFilter(id)).session(session);
+    if (!application) throw new ApiError(404, "Application not found");
+    if (!application.isDeleted && !application.isArchived) throw new ApiError(409, "Application is not deleted or archived");
+    application.isDeleted = false;
+    application.deletedAt = null;
+    application.deletedBy = "";
+    application.isArchived = false;
+    application.archivedAt = null;
+    application.archivedBy = "";
+    if (application.status === APPLICATION_STATUSES.ARCHIVED) {
+      application.status = application.statusBeforeArchive || APPLICATION_STATUSES.SUBMITTED;
+      application.statusBeforeArchive = null;
+    }
+    await application.save({ session });
+    await appendEvent({
+      application, actorUserId: adminUserId, actorRole: ROLES.ADMIN, eventType: "workflow",
+      action: "application_restored", remarks: "Application restored by administrator",
+      visibility: "internal", session,
+    });
+  });
+  return application;
+};
+
+export const getApplicationWorkflowConfiguration = async () => {
+  const configuration = await ApplicationWorkflowConfig.findOne({ key: "default" }).lean();
+  return configuration ? { ...configuration, availableStatuses: [...APPLICATION_STATUS_VALUES] } : {
+    key: "default",
+    name: "Default application lifecycle",
+    statuses: [...APPLICATION_STATUS_VALUES],
+    transitions: Object.entries(APPLICATION_STATUS_TRANSITIONS).map(([from, to]) => ({ from, to: [...to] })),
+    availableStatuses: [...APPLICATION_STATUS_VALUES],
+    isDefault: true,
+  };
+};
+
+export const updateApplicationWorkflowConfiguration = async ({ adminUserId, payload }) => {
+  const unexpected = Object.keys(payload).filter((key) => !["name", "statuses", "transitions"].includes(key));
+  if (unexpected.length) throw new ApiError(400, `Unexpected fields: ${unexpected.join(", ")}`);
+  if (!Array.isArray(payload.statuses) || !Array.isArray(payload.transitions)) {
+    throw new ApiError(400, "statuses and transitions must be arrays");
+  }
+  const statusesInUse = await Application.distinct("status", { isDeleted: { $ne: true } });
+  const disabledInUse = statusesInUse.filter((status) => !payload.statuses.includes(status));
+  if (disabledInUse.length) {
+    throw new ApiError(409, `Statuses used by active applications cannot be disabled: ${disabledInUse.join(", ")}`);
+  }
+  let configuration = await ApplicationWorkflowConfig.findOne({ key: "default" });
+  if (!configuration) {
+    configuration = new ApplicationWorkflowConfig({ key: "default", updatedBy: adminUserId });
+  }
+  configuration.name = payload.name ?? configuration.name;
+  configuration.statuses = payload.statuses;
+  configuration.transitions = payload.transitions;
+  configuration.updatedBy = adminUserId;
+  await configuration.save();
+  return configuration;
 };

@@ -14,6 +14,9 @@ export const createApplicationNote = (id, data) => getData(API.post(`/admin/appl
 export const updateApplicationNote = (id, noteId, data) => getData(API.patch(`/admin/applications/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, data));
 export const deleteApplicationNote = (id, noteId) => getData(API.delete(`/admin/applications/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`));
 export const deleteAdminApplication = (id) => getData(API.delete(`/admin/applications/${encodeURIComponent(id)}`));
+export const restoreAdminApplication = (id) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/restore`));
+export const getApplicationWorkflowConfiguration = () => getData(API.get("/admin/application-workflow"));
+export const saveApplicationWorkflowConfiguration = (data) => getData(API.put("/admin/application-workflow", data));
 export const publishApplicationLead = (id, data) => getData(API.post(`/admin/applications/${encodeURIComponent(id)}/publish-lead`, data));
 export const getAdminCustomers = (params = {}) => getData(API.get("/admin/customers", { params }));
 export const getAdminCustomer = (id) => getData(API.get(`/admin/customers/${encodeURIComponent(id)}`));
