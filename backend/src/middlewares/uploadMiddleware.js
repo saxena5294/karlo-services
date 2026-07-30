@@ -30,6 +30,19 @@ export const uploadSingleApplicationFile = multer({
 }).single("file");
 
 const imageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const customerDocumentMaxMb = Math.min(
+  Math.max(Number(process.env.CUSTOMER_DOCUMENT_MAX_MB) || 10, 1),
+  25
+);
+export const uploadCustomerDocument = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: customerDocumentMaxMb * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    const allowed = new Set(["application/pdf", ...imageMimeTypes]);
+    const accepted = allowed.has(file.mimetype);
+    callback(accepted ? null : new Error("Only PDF, JPG, PNG, and WEBP documents are allowed"), accepted);
+  },
+}).single("file");
 export const uploadCmsImage = multer({
   storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => callback(imageMimeTypes.has(file.mimetype) ? null : new Error("Only JPG, PNG, and WEBP images are allowed"), imageMimeTypes.has(file.mimetype)),

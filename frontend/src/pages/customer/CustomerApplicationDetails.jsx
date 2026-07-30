@@ -6,6 +6,7 @@ import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
 import StatusBadge from "../../components/dashboard/StatusBadge";
 import DocumentViewer from "../../components/documents/DocumentViewer";
+import CustomerDocumentsManager from "../../components/documents/CustomerDocumentsManager";
 import ApplicationWorkflowPanel from "../../components/applications/ApplicationWorkflowPanel";
 import {
   formatDate,
@@ -68,6 +69,7 @@ const CustomerApplicationDetails = () => {
       </section>
 
       <DocumentViewer applicationId={id} title="Application documents" />
+      <CustomerDocumentsManager mode="customer" applicationId={id} compact />
       <section className="rounded-2xl border bg-white p-5 shadow-sm"><h2 className="font-bold">Declaration forms</h2><p className="mt-1 text-sm text-slate-500">Preview or download declaration forms available for your application role.</p><Link to="/customer/declaration-forms" className="mt-3 inline-flex rounded-lg border border-blue-700 px-4 py-2 text-sm font-semibold text-blue-700">Open declaration forms</Link></section>
       <ApplicationWorkflowPanel applicationId={id} />
 

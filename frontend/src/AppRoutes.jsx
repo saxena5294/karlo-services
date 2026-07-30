@@ -9,6 +9,7 @@ const namedPage = (loader, name) => lazy(async () => ({ default: (await loader()
 const CustomerApplicationDetails = page(() => import("./pages/customer/CustomerApplicationDetails"));
 const CustomerDashboard = page(() => import("./pages/customer/CustomerDashboard"));
 const CustomerProfile = page(() => import("./pages/customer/CustomerProfile"));
+const CustomerDocuments = page(() => import("./pages/customer/CustomerDocuments"));
 const MyApplications = page(() => import("./pages/customer/MyApplications"));
 const ExpertApplicationDetails = page(() => import("./pages/expert/ExpertApplicationDetails"));
 const ExpertApplications = page(() => import("./pages/expert/ExpertApplications"));
@@ -29,6 +30,7 @@ const DashboardHelpPage = page(() => import("./pages/shared/DashboardHelpPage"))
 const AdminApplicationDetails = page(() => import("./pages/admin/AdminApplicationDetails"));
 const AdminApplications = page(() => import("./pages/admin/AdminApplications"));
 const AdminCustomers = page(() => import("./pages/admin/AdminCustomers"));
+const AdminCustomerDocuments = page(() => import("./pages/admin/AdminCustomerDocuments"));
 const AdminDashboard = page(() => import("./pages/admin/AdminDashboard"));
 const AdminReports = page(() => import("./pages/admin/AdminReports"));
 const AdminExperts = page(() => import("./pages/admin/AdminExperts"));
@@ -98,6 +100,7 @@ const AppRoutes = () => (
       <Route path="dashboard" element={<CustomerDashboard />} />
       <Route path="applications" element={<MyApplications />} />
       <Route path="applications/:id" element={<CustomerApplicationDetails />} />
+      <Route path="documents" element={<CustomerDocuments />} />
       <Route path="services" element={<DashboardServices />} />
       <Route path="form-history" element={<FormHistory portal="customer" />} />
       <Route path="software" element={<SoftwarePage />} />
@@ -152,6 +155,7 @@ const AppRoutes = () => (
       <Route path="dashboard" element={<AdminDashboard />} />
       <Route path="applications" element={<AdminApplications />} />
       <Route path="applications/:id" element={<AdminApplicationDetails />} />
+      <Route path="customer-documents" element={<AdminCustomerDocuments />} />
       <Route path="assignments" element={<AdminAssignments />} />
       <Route path="crm" element={<CrmOverview />} />
       <Route path="crm/customers" element={<CrmDirectory type="customers" />} />

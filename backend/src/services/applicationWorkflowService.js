@@ -11,6 +11,7 @@ import { ApplicationComment } from "../models/applicationCommentModel.js";
 import { ApplicationNote } from "../models/applicationNoteModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
 import { ApplicationWorkflowConfig } from "../models/applicationWorkflowConfigModel.js";
+import { CustomerDocument } from "../models/customerDocumentModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import { createApplicationNotification, sanitizeNotificationText } from "./notificationService.js";
 
@@ -70,8 +71,18 @@ const currentDocuments = (application) => [
   ...(application.completionDocuments || []),
 ].filter((document) => document.isCurrent !== false);
 
-export const buildDocumentChecklist = (application) => {
-  const documents = currentDocuments(application);
+export const buildDocumentChecklist = (application, linkedCustomerDocuments = []) => {
+  const documents = [
+    ...currentDocuments(application),
+    ...linkedCustomerDocuments.map((document) => ({
+      label: document.documentName,
+      documentType: document.documentType,
+      fieldName: document.documentName,
+      verificationStatus: document.verificationStatus,
+      expiryDate: document.expiryDate,
+      isCurrent: true,
+    })),
+  ];
   const requiredDocuments = application.requiredDocumentSnapshot || [];
   const normalized = (value) => String(value || "").trim().toLowerCase();
   const uploadedRequired = requiredDocuments.filter((requirement) =>
@@ -86,6 +97,7 @@ export const buildDocumentChecklist = (application) => {
     verified: documents.filter((document) => document.verificationStatus === "verified").length,
     rejected: documents.filter((document) => ["rejected", "reupload_required"].includes(document.verificationStatus)).length,
     pending: documents.filter((document) => !document.verificationStatus || document.verificationStatus === "pending").length,
+    expired: documents.filter((document) => document.expiryDate && new Date(document.expiryDate).getTime() < Date.now()).length,
   };
 };
 
@@ -97,9 +109,12 @@ export const getApplicationWorkflow = async ({ id, userId, role }) => {
     commentFilter.visibility = "public";
     timelineFilter.visibility = { $ne: "internal" };
   }
-  const [comments, timeline] = await Promise.all([
+  const [comments, timeline, linkedCustomerDocuments] = await Promise.all([
     ApplicationComment.find(commentFilter).sort({ createdAt: -1 }).lean(),
     ApplicationTimeline.find(timelineFilter).sort({ createdAt: 1 }).lean(),
+    CustomerDocument.find({ applications: application._id, isDeleted: { $ne: true } })
+      .select("documentType documentName verificationStatus expiryDate")
+      .lean(),
   ]);
   const workflow = {
     priority: application.priority || "medium",
@@ -112,7 +127,7 @@ export const getApplicationWorkflow = async ({ id, userId, role }) => {
     timeline,
     statusHistory: timeline.filter(({ eventType, action }) =>
       eventType === "status" || action === "status_changed" || action === "application_submitted"),
-    documentChecklist: buildDocumentChecklist(application),
+    documentChecklist: buildDocumentChecklist(application, linkedCustomerDocuments),
   };
   if (role === ROLES.ADMIN) {
     workflow.notes = await ApplicationNote.find({ application: application._id }).sort({ createdAt: -1 }).lean();

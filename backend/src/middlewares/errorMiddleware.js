@@ -9,11 +9,12 @@ export const errorMiddleware = (error, _req, res, _next) => {
   const isUploadError =
     error?.name === "MulterError" ||
     error?.message?.includes("files are allowed") ||
+    error?.message?.includes("documents are allowed") ||
     error?.message?.includes("PDF files are allowed");
   const statusCode = isUploadError ? 400 : error.statusCode || error.status || 500;
   const exposeError = statusCode < 500 || process.env.NODE_ENV === "development";
   const message = error?.code === "LIMIT_FILE_SIZE"
-    ? "PDF must be smaller than 10 MB"
+    ? "The uploaded file exceeds the configured size limit"
     : error?.code === "LIMIT_UNEXPECTED_FILE"
       ? "Use declarationFile as the PDF upload field"
       : error.message || "Request failed";
