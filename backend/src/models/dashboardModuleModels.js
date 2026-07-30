@@ -33,11 +33,30 @@ const renewalRequestSchema = new mongoose.Schema({
 }, { timestamps: true, collection: "partnerrenewals" });
 renewalRequestSchema.index({ partnerUserId: 1, createdAt: -1 });
 
-const replySchema = new mongoose.Schema({ authorUserId: { type: String, required: true }, authorRole: { type: String, enum: ["customer", "partner", "admin"], required: true }, message: { type: String, required: true, trim: true, maxlength: 3000 }, createdAt: { type: Date, default: Date.now } }, { _id: true });
+const replySchema = new mongoose.Schema({ authorUserId: { type: String, required: true }, authorRole: { type: String, enum: ["customer", "partner", "expert", "admin"], required: true }, message: { type: String, required: true, trim: true, maxlength: 3000 }, createdAt: { type: Date, default: Date.now } }, { _id: true });
 const supportTicketSchema = new mongoose.Schema({
-  ticketNumber: { type: String, required: true, unique: true, trim: true }, createdByUserId: { type: String, required: true, trim: true, index: true }, createdByRole: roleField, category: { type: String, enum: ["service_query", "transaction_query", "feedback", "technical_issue", "other"], required: true }, subcategory: { type: String, trim: true, maxlength: 160, default: "" }, subject: { type: String, required: true, trim: true, maxlength: 200 }, description: { type: String, required: true, trim: true, maxlength: 5000 }, serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", default: null }, transactionId: { type: String, trim: true, default: "" }, status: { type: String, enum: ["open", "in_progress", "waiting_for_user", "resolved", "closed"], default: "open", index: true }, priority: { type: String, enum: ["low", "normal", "high", "urgent"], default: "normal" }, assignedAdminId: { type: String, default: "" }, replies: { type: [replySchema], default: [] }, closedAt: { type: Date, default: null },
+  ticketNumber: { type: String, required: true, unique: true, trim: true },
+  createdByUserId: { type: String, required: true, trim: true, index: true },
+  createdByRole: { type: String, enum: ["customer", "partner", "expert"], required: true, index: true },
+  category: { type: String, enum: ["service_query", "transaction_query", "feedback", "technical_issue", "application", "payment", "document", "technical", "partner", "expert", "account", "general", "other"], required: true },
+  subcategory: { type: String, trim: true, maxlength: 160, default: "" },
+  subject: { type: String, required: true, trim: true, maxlength: 200 },
+  description: { type: String, required: true, trim: true, maxlength: 5000 },
+  serviceId: { type: mongoose.Schema.Types.ObjectId, ref: "Service", default: null },
+  transactionId: { type: String, trim: true, default: "" },
+  relatedApplication: { type: mongoose.Schema.Types.ObjectId, ref: "Application", default: null },
+  relatedLead: { type: mongoose.Schema.Types.ObjectId, ref: "CrmLead", default: null },
+  status: { type: String, enum: ["open", "in_progress", "waiting_for_user", "waiting_for_customer", "waiting_for_partner", "resolved", "closed"], default: "open", index: true },
+  priority: { type: String, enum: ["low", "normal", "medium", "high", "urgent"], default: "normal" },
+  assignedAdminId: { type: String, trim: true, default: "" },
+  resolution: { type: String, trim: true, maxlength: 3000, default: "" },
+  resolvedAt: { type: Date, default: null },
+  statusHistory: { type: [{ status: { type: String, required: true }, changedBy: { type: String, required: true }, changedAt: { type: Date, default: Date.now } }], default: [] },
+  replies: { type: [replySchema], default: [] },
+  closedAt: { type: Date, default: null },
 }, { timestamps: true, collection: "supporttickets" });
 supportTicketSchema.index({ createdByUserId: 1, createdByRole: 1, status: 1, updatedAt: -1 });
+supportTicketSchema.index({ status: 1, priority: 1, assignedAdminId: 1, updatedAt: -1 });
 
 export const SoftwareAsset = mongoose.model("SoftwareAsset", softwareAssetSchema);
 export { DeclarationForm };

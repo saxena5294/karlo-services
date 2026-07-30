@@ -43,6 +43,14 @@ const AdminLeadDetails = page(() => import("./pages/admin/AdminLeadDetails"));
 const ContentManagementPage = page(() => import("./pages/admin/content/ContentManagementPage"));
 const AdminAuditLogs = page(() => import("./pages/admin/AdminAuditLogs"));
 const AdminDeclarationForms = page(() => import("./pages/admin/AdminDeclarationForms"));
+const CrmOverview = page(() => import("./pages/admin/crm/CrmOverview"));
+const CrmDirectory = page(() => import("./pages/admin/crm/CrmDirectory"));
+const CrmEntityDetails = page(() => import("./pages/admin/crm/CrmEntityDetails"));
+const CrmLeads = page(() => import("./pages/admin/crm/CrmLeads"));
+const CrmLeadDetails = page(() => import("./pages/admin/crm/CrmLeadDetails"));
+const CrmTickets = page(() => import("./pages/admin/crm/CrmTickets"));
+const CrmTicketDetails = page(() => import("./pages/admin/crm/CrmTicketDetails"));
+const CrmFollowUps = page(() => import("./pages/admin/crm/CrmFollowUps"));
 const About = page(() => import("./pages/public/About"));
 const ApplyService = page(() => import("./pages/public/ApplyService"));
 const AuthPlaceholder = page(() => import("./pages/public/AuthPlaceholder"));
@@ -145,6 +153,18 @@ const AppRoutes = () => (
       <Route path="applications" element={<AdminApplications />} />
       <Route path="applications/:id" element={<AdminApplicationDetails />} />
       <Route path="assignments" element={<AdminAssignments />} />
+      <Route path="crm" element={<CrmOverview />} />
+      <Route path="crm/customers" element={<CrmDirectory type="customers" />} />
+      <Route path="crm/customers/:id" element={<CrmEntityDetails type="customer" />} />
+      <Route path="crm/partners" element={<CrmDirectory type="partners" />} />
+      <Route path="crm/partners/:id" element={<CrmEntityDetails type="partner" />} />
+      <Route path="crm/experts" element={<CrmDirectory type="experts" />} />
+      <Route path="crm/experts/:id" element={<CrmEntityDetails type="expert" />} />
+      <Route path="crm/leads" element={<CrmLeads />} />
+      <Route path="crm/leads/:id" element={<CrmLeadDetails />} />
+      <Route path="crm/tickets" element={<CrmTickets />} />
+      <Route path="crm/tickets/:id" element={<CrmTicketDetails />} />
+      <Route path="crm/follow-ups" element={<CrmFollowUps />} />
       <Route path="customers" element={<AdminCustomers />} />
       <Route path="experts" element={<AdminExperts />} />
       <Route path="partners" element={<AdminPartners />} />

@@ -67,6 +67,15 @@ const adminNavigation = [
   { name: "Dashboard", path: "/admin/dashboard", icon: LayoutDashboard },
   { name: "Applications", path: "/admin/applications", icon: FileText },
   { name: "Assignments", path: "/admin/assignments", icon: ClipboardList },
+  { name: "CRM", section: true },
+  { name: "Overview", path: "/admin/crm", icon: LayoutDashboard },
+  { name: "CRM Customers", path: "/admin/crm/customers", icon: Users },
+  { name: "CRM Partners", path: "/admin/crm/partners", icon: Store },
+  { name: "CRM Experts", path: "/admin/crm/experts", icon: UserRound },
+  { name: "CRM Leads", path: "/admin/crm/leads", icon: ListChecks },
+  { name: "CRM Tickets", path: "/admin/crm/tickets", icon: Bell },
+  { name: "CRM Follow-ups", path: "/admin/crm/follow-ups", icon: ClipboardList },
+  { name: "Operations", section: true },
   { name: "Customers", path: "/admin/customers", icon: Users },
   { name: "Experts", path: "/admin/experts", icon: Store },
   { name: "Partners", path: "/admin/partners", icon: Users },
@@ -128,7 +137,8 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-4" aria-label={`${portalLabel} navigation`}>
-        {navigation.map(({ name, path, icon: Icon, disabled }) => (
+        {navigation.map(({ name, path, icon: Icon, disabled, section }) => (
+          section ? <p key={`section-${name}`} className="px-4 pb-1 pt-4 text-[11px] font-bold uppercase tracking-wider text-slate-400">{name}</p> :
           name === "Declaration Forms" && (portal === "customer" || portal === "partner") ? (
             <DeclarationFormsMenu key={path} portal={portal} onNavigate={onClose} />
           ) : disabled ? (
@@ -141,7 +151,7 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
             to={path}
             onClick={onClose}
             className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                pathname === path.split("?")[0] &&
+                (pathname === path.split("?")[0] || (path.startsWith("/admin/crm/") && pathname.startsWith(`${path}/`))) &&
                 (path.includes("status=")
                   ? currentStatus === decodeURIComponent(path.split("status=")[1])
                   : !path.includes("/expert/applications") || !currentStatus)
