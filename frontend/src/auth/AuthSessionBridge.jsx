@@ -1,11 +1,11 @@
 import { useAuth } from "@clerk/react";
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { setTokenProvider } from "./clerkToken";
 
 const AuthSessionBridge = ({ children }) => {
   const { getToken } = useAuth();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setTokenProvider(getToken);
     return () => setTokenProvider(null);
   }, [getToken]);

@@ -1,14 +1,16 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { registerPartner } from "../../api/partnerApi";
 
 const initial = { businessName: "", ownerName: "", mobile: "", email: "", city: "", state: "", pincode: "", businessType: "" };
-const PartnerRegistration = () => {
+const PartnerRegistration = ({ onboarding = false }) => {
   const [form, setForm] = useState(initial);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setFeedback("");
-    try { await registerPartner(form); setFeedback("Registration submitted. An admin must approve your profile before work can be assigned."); setForm(initial); }
+    try { await registerPartner(form); setFeedback("Registration submitted. An admin must approve your profile before work can be assigned."); setForm(initial); if (onboarding) navigate("/approval-pending", { replace: true, state: { profile: { role: "partner", status: "pending" } } }); }
     catch (error) { setFeedback(error.response?.data?.message || "Unable to submit registration."); }
     finally { setBusy(false); }
   };

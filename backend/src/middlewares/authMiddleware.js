@@ -5,6 +5,12 @@ import { ApiError } from "../utils/ApiError.js";
 
 const blockedStatuses = new Set(["rejected", "suspended", "inactive"]);
 
+export const assertAccountCanAuthenticate = (profile) => {
+  if (!profile) throw new ApiError(404, "Account profile was not found");
+  if (blockedStatuses.has(profile.status)) throw new ApiError(403, `Account is ${profile.status}`);
+  return profile;
+};
+
 export const profileFromClerkUser = (clerkUser) => {
   const verifiedEmail = clerkUser.emailAddresses?.find((item) => item.verification?.status === "verified");
   return {
@@ -22,8 +28,8 @@ export const profileFromClerkUser = (clerkUser) => {
   };
 };
 
-export const findOrCreateUserProfile = async (clerkUserId, client = clerkClient) => {
-  let profile = await User.findOne({ clerkUserId });
+export const findOrCreateUserProfile = async (clerkUserId, client = clerkClient, UserModel = User) => {
+  let profile = await UserModel.findOne({ clerkUserId });
   if (profile) return profile;
 
   const clerkUser = await client.users.getUser(clerkUserId);
@@ -31,10 +37,10 @@ export const findOrCreateUserProfile = async (clerkUserId, client = clerkClient)
   if (!candidate.email) throw new ApiError(422, "A verified email address is required");
 
   try {
-    profile = await User.create(candidate);
+    profile = await UserModel.create(candidate);
   } catch (error) {
     if (error?.code !== 11000) throw error;
-    profile = await User.findOne({ clerkUserId });
+    profile = await UserModel.findOne({ clerkUserId });
   }
   return profile;
 };
@@ -47,10 +53,7 @@ export const requireAuth = async (req, _res, next) => {
     }
 
     const profile = await findOrCreateUserProfile(clerkAuth.userId);
-    if (!profile) return next(new ApiError(404, "Account profile was not found"));
-    if (blockedStatuses.has(profile.status)) {
-      return next(new ApiError(403, `Account is ${profile.status}`));
-    }
+    assertAccountCanAuthenticate(profile);
 
     req.auth = Object.freeze({
       userId: clerkAuth.userId,

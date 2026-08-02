@@ -6,6 +6,7 @@ export const ROLES = Object.freeze({
 });
 
 export const ROLE_VALUES = Object.freeze(Object.values(ROLES));
+export const PUBLIC_REGISTRATION_ROLES = Object.freeze([ROLES.PARTNER, ROLES.EXPERT]);
 
 export const normalizeRole = (role) => {
   const value = typeof role === "string" ? role.trim().toLowerCase() : "";

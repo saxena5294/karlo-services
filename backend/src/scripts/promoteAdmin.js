@@ -1,17 +1,18 @@
 import "../config/environment.js";
 import mongoose from "mongoose";
 import { connectDatabase } from "../config/database.js";
-import { User } from "../models/userModel.js";
+import { promoteAdminByClerkUserId } from "../services/adminPromotionService.js";
 
-const clerkUserId = process.argv[2]?.trim();
-if (!clerkUserId) throw new Error("Usage: npm run promote:admin -- <clerkUserId>");
+const fromEnvironment = process.argv[2] === "--from-env";
+const clerkUserId = fromEnvironment ? process.env.ADMIN_CLERK_USER_ID : process.argv[2];
 
-await connectDatabase();
-const user = await User.findOneAndUpdate(
-  { clerkUserId },
-  { $set: { role: "admin", status: "active", "approval.status": "approved", "approval.reviewedAt": new Date() } },
-  { returnDocument: "after", runValidators: true },
-);
-if (!user) throw new Error("User profile not found. Sign in once before promotion.");
-console.log(`Promoted Clerk user ${clerkUserId} to admin.`);
-await mongoose.disconnect();
+try {
+  await connectDatabase();
+  const user = await promoteAdminByClerkUserId({ clerkUserId });
+  console.log(`Admin promotion complete: ${user.clerkUserId} is role=${user.role}, status=${user.status}.`);
+} catch (error) {
+  console.error(`[promote-admin] ${error.message}`);
+  process.exitCode = 1;
+} finally {
+  await mongoose.disconnect();
+}

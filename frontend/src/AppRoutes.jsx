@@ -4,6 +4,7 @@ import DashboardLayout from "./components/dashboard/DashboardLayout";
 import PublicLayout from "./components/layout/PublicLayout";
 import { dashboardFeatures } from "./config/dashboardFeatures";
 import ProtectedRoute from "./auth/ProtectedRoute";
+import AuthenticatedRoute from "./auth/AuthenticatedRoute";
 
 const page = (loader) => lazy(loader);
 const namedPage = (loader, name) => lazy(async () => ({ default: (await loader())[name] }));
@@ -59,6 +60,8 @@ const ApplyService = page(() => import("./pages/public/ApplyService"));
 const AuthPage = page(() => import("./pages/public/AuthPage"));
 const AuthComplete = page(() => import("./pages/public/AuthComplete"));
 const ApprovalPending = page(() => import("./pages/public/ApprovalPending"));
+const AccountUnavailable = page(() => import("./pages/public/AccountUnavailable"));
+const AuthOnboarding = page(() => import("./pages/public/AuthOnboarding"));
 const CompleteProfile = page(() => import("./pages/shared/CompleteProfile"));
 const Contact = page(() => import("./pages/public/Contact"));
 const Home = page(() => import("./pages/public/Home"));
@@ -96,10 +99,13 @@ const AppRoutes = () => (
       <Route path="/login/*" element={<AuthPage mode="login" />} />
       <Route path="/register/*" element={<AuthPage mode="register" />} />
       <Route path="/auth/complete" element={<AuthComplete />} />
+      <Route path="/auth/redirect" element={<AuthComplete />} />
+      <Route path="/auth/onboarding" element={<AuthenticatedRoute><AuthOnboarding /></AuthenticatedRoute>} />
       <Route path="/approval-pending" element={<ApprovalPending />} />
+      <Route path="/account-unavailable" element={<AccountUnavailable />} />
       <Route path="/profile/complete" element={<CompleteProfile />} />
-      <Route path="/onboarding/partner" element={<ProtectedRoute role="partner" allowPending><PartnerRegistration /></ProtectedRoute>} />
-      <Route path="/onboarding/expert" element={<ProtectedRoute role="expert" allowPending><ExpertProfile /></ProtectedRoute>} />
+      <Route path="/onboarding/partner" element={<ProtectedRoute role="partner" allowPending><PartnerRegistration onboarding /></ProtectedRoute>} />
+      <Route path="/onboarding/expert" element={<ProtectedRoute role="expert" allowPending><ExpertProfile onboarding /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Route>
 

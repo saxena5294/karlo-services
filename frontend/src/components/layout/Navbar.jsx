@@ -78,7 +78,7 @@ const Navbar = () => {
             >
               Register
             </Link>
-            </SignedOut><SignedIn><Link to="/auth/complete" className="rounded-lg px-4 py-2 font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></SignedIn>
+            </SignedOut><SignedIn><Link to="/auth/redirect" className="rounded-lg px-4 py-2 font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></SignedIn>
           </div>
 
           <button
@@ -129,7 +129,7 @@ const Navbar = () => {
               >
                 Register
               </Link>
-            </div></SignedOut><SignedIn><div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><Link to="/auth/complete" onClick={closeMenu} className="font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></div></SignedIn>
+            </div></SignedOut><SignedIn><div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><Link to="/auth/redirect" onClick={closeMenu} className="font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></div></SignedIn>
           </div>
         )}
       </nav>

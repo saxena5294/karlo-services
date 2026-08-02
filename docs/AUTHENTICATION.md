@@ -10,6 +10,8 @@ Karlo Services uses Clerk only for registration, email verification, password re
 4. `requireCustomer`, `requirePartner`, `requireExpert`, or `requireAdmin` checks the MongoDB role. Partner and expert business routes additionally require an approved account.
 5. Existing services continue to receive the immutable Clerk ID through `req.auth.userId`, preserving ownership and assignment contracts.
 
+After sign-in, Clerk always returns to `/auth/redirect`, which loads `GET /api/auth/me` and routes from the MongoDB role. After sign-up, Clerk returns to `/auth/onboarding`, where the authenticated user chooses Customer, Partner, or Expert. Partner and Expert choices call protected backend onboarding endpoints; the browser never decides the persisted role by itself.
+
 Clerk metadata is never read for a Karlo business role.
 
 ## Configuration
@@ -27,6 +29,7 @@ In Clerk, allow the frontend origin and configure `/login` and `/register` as th
 - Partner and expert signup changes the MongoDB role and account status to `pending`. Partner business details and expert skills are collected before review.
 - The existing Admin Partners and Admin Experts screens approve, reject, suspend, or deactivate registrations. Approval updates both the business profile and the authoritative `User` record.
 - Public registration cannot request the admin role.
+- Public Partner and Expert onboarding uses `POST /api/auth/onboarding/partner` and `POST /api/auth/onboarding/expert`. Both require a valid Clerk session and an existing MongoDB user without a conflicting business role.
 
 To promote an existing, already-signed-in Clerk user through the approved seed workflow:
 
@@ -34,6 +37,10 @@ To promote an existing, already-signed-in Clerk user through the approved seed w
 cd backend
 npm run promote:admin -- user_CLERK_ID
 ```
+
+The command intentionally refuses to create a missing profile. If it reports that the profile is missing, first confirm the frontend and backend use the same Clerk instance, restart both servers after changing environment values, sign in, and complete an authenticated `GET /api/auth/me` request.
+
+For local environment-driven setup, set `ADMIN_CLERK_USER_ID` only in `backend/.env` and run `npm run promote:admin:env`. Never put this value in a `VITE_` variable.
 
 ## Operational notes
 

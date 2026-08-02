@@ -16,6 +16,7 @@
     "migrate:service-business-fields": "node src/scripts/migrateServiceBusinessFields.js",
     "migrate:application-documents": "node src/scripts/migrateApplicationDocumentMetadata.js",
     "promote:admin": "node src/scripts/promoteAdmin.js",
+    "promote:admin:env": "node src/scripts/promoteAdmin.js --from-env",
     "legacy:seed-declarations": "node src/seed/declarationFormsSeed.js"
   },
   "keywords": [
