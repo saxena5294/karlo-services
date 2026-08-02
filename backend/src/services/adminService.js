@@ -23,6 +23,7 @@ import { getApplicationWorkflow } from "./applicationWorkflowService.js";
 import { PaymentRecord } from "../models/dashboardModuleModels.js";
 import { ROLES } from "../constants/roleConstants.js";
 import { AuditLog } from "../models/auditLogModel.js";
+import { User } from "../models/userModel.js";
 
 const DEFAULT_LIMIT = 20;
 const TERMINAL_STATUSES = ["Completed", "Delivered", "Rejected", "Cancelled", "completed", "rejected"];
@@ -323,13 +324,26 @@ export const getAdminExperts = async (query = {}) => {
 
 export const createExpertProfile = async (payload, adminUserId) => {
   assertOnlyFields(payload, ["userId", "displayName", "email", "phone", "status", "categories", "skills", "availability"]);
-  return ExpertProfile.create({ ...payload, createdBy: adminUserId });
+  const expert = await ExpertProfile.create({ ...payload, createdBy: adminUserId });
+  const accountStatus = expert.status === "active" || expert.status === "unavailable" ? "approved" : expert.status;
+  await User.updateOne(
+    { clerkUserId: expert.userId },
+    { $set: { role: ROLES.EXPERT, status: accountStatus, "approval.status": accountStatus === "approved" ? "approved" : accountStatus, "approval.reviewedBy": adminUserId, "approval.reviewedAt": new Date() } },
+  );
+  return expert;
 };
 
 export const updateExpertProfile = async (id, payload) => {
   assertOnlyFields(payload, ["displayName", "email", "phone", "status", "categories", "skills", "availability"]);
   const expert = await ExpertProfile.findByIdAndUpdate(id, payload, { returnDocument: "after", runValidators: true }).lean();
   if (!expert) throw new ApiError(404, "Expert not found");
+  if (payload.status) {
+    const accountStatus = payload.status === "active" ? "approved" : payload.status === "unavailable" ? "approved" : payload.status;
+    await User.updateOne(
+      { clerkUserId: expert.userId, role: ROLES.EXPERT },
+      { $set: { status: accountStatus, "approval.status": accountStatus === "approved" ? "approved" : accountStatus, "approval.reviewedAt": new Date() } },
+    );
+  }
   return expert;
 };
 

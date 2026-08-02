@@ -1,6 +1,6 @@
 import express from "express";
 import * as controller from "../controllers/adminController.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
 import { requireLeadMarketplace } from "../middlewares/featureFlagMiddleware.js";
 import * as declarationFormController from "../controllers/declarationFormController.js";
@@ -8,8 +8,7 @@ import { uploadCmsImage, uploadDeclarationPdf } from "../middlewares/uploadMiddl
 
 const router = express.Router();
 
-// TODO(Clerk): replace developmentAuth; retain the admin role guard contract.
-router.use(developmentAuth, requireRole(ROLES.ADMIN));
+router.use(requireAuth, requireRole(ROLES.ADMIN));
 
 router.get("/dashboard-summary", controller.dashboardSummary);
 router.get("/applications", controller.listApplications);

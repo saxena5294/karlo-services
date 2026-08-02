@@ -5,6 +5,7 @@ import { ContentEntry, CONTENT_SECTIONS } from "../models/contentEntryModel.js";
 import { Lead, LEAD_STATUSES } from "../models/leadModel.js";
 import { Notification } from "../models/notificationModel.js";
 import { PartnerProfile } from "../models/partnerProfileModel.js";
+import { User } from "../models/userModel.js";
 import { PlatformSetting } from "../models/platformSettingModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import { acceptLead, publishApplicationLead } from "./partnerMarketplaceService.js";
@@ -64,6 +65,7 @@ export const updatePartnerAdmin = async (id, payload) => {
   if (bad.length) throw new ApiError(400, `Unexpected fields: ${bad.join(", ")}`);
   const partner = await PartnerProfile.findByIdAndUpdate(id, { $set: payload }, { returnDocument: "after", runValidators: true }).lean();
   if (!partner) throw new ApiError(404, "Partner not found");
+  if (payload.isActive === false) await User.updateOne({ clerkUserId: partner.userId }, { $set: { status: "inactive" } });
   return partner;
 };
 

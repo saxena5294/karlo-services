@@ -1,10 +1,10 @@
 import express from "express";
 import * as controller from "../controllers/crmController.js";
 import { ROLES } from "../constants/roleConstants.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
-router.use(developmentAuth, requireRole(ROLES.ADMIN));
+router.use(requireAuth, requireRole(ROLES.ADMIN));
 
 router.get("/overview", controller.overview);
 router.get("/customers", controller.customers);

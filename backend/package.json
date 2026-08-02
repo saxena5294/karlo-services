@@ -15,6 +15,7 @@
     "seed:simple-forms": "node src/scripts/applySimpleFormTemplates.js",
     "migrate:service-business-fields": "node src/scripts/migrateServiceBusinessFields.js",
     "migrate:application-documents": "node src/scripts/migrateApplicationDocumentMetadata.js",
+    "promote:admin": "node src/scripts/promoteAdmin.js",
     "legacy:seed-declarations": "node src/seed/declarationFormsSeed.js"
   },
   "keywords": [
@@ -26,8 +27,9 @@
   "license": "ISC",
   "description": "Backend API for Karlo Services",
   "dependencies": {
-    "cookie-parser": "^1.4.7",
+    "@clerk/express": "^2.1.49",
     "cloudinary": "^2.7.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

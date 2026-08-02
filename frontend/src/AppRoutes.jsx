@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
 import PublicLayout from "./components/layout/PublicLayout";
 import { dashboardFeatures } from "./config/dashboardFeatures";
+import ProtectedRoute from "./auth/ProtectedRoute";
 
 const page = (loader) => lazy(loader);
 const namedPage = (loader, name) => lazy(async () => ({ default: (await loader())[name] }));
@@ -55,7 +56,10 @@ const CrmTicketDetails = page(() => import("./pages/admin/crm/CrmTicketDetails")
 const CrmFollowUps = page(() => import("./pages/admin/crm/CrmFollowUps"));
 const About = page(() => import("./pages/public/About"));
 const ApplyService = page(() => import("./pages/public/ApplyService"));
-const AuthPlaceholder = page(() => import("./pages/public/AuthPlaceholder"));
+const AuthPage = page(() => import("./pages/public/AuthPage"));
+const AuthComplete = page(() => import("./pages/public/AuthComplete"));
+const ApprovalPending = page(() => import("./pages/public/ApprovalPending"));
+const CompleteProfile = page(() => import("./pages/shared/CompleteProfile"));
 const Contact = page(() => import("./pages/public/Contact"));
 const Home = page(() => import("./pages/public/Home"));
 const NotFound = page(() => import("./pages/public/NotFound"));
@@ -81,7 +85,7 @@ const AppRoutes = () => (
       <Route path="/" element={<Home />} />
       <Route path="/services" element={<Services />} />
       <Route path="/services/:slug" element={<ServiceDetails />} />
-      <Route path="/services/:slug/apply" element={<ApplyService />} />
+      <Route path="/services/:slug/apply" element={<ProtectedRoute role="customer"><ApplyService /></ProtectedRoute>} />
       <Route path="/track" element={<TrackApplication />} />
       <Route path="/about" element={<About />} />
       <Route path="/contact" element={<Contact />} />
@@ -89,13 +93,17 @@ const AppRoutes = () => (
       <Route path="/blogs" element={<Blogs />} />
       <Route path="/blogs/:slug" element={<BlogDetails />} />
       <Route path="/refund-policy" element={<RefundPolicy />} />
-      <Route path="/login" element={<AuthPlaceholder mode="login" />} />
-      <Route path="/register" element={<AuthPlaceholder mode="register" />} />
+      <Route path="/login/*" element={<AuthPage mode="login" />} />
+      <Route path="/register/*" element={<AuthPage mode="register" />} />
+      <Route path="/auth/complete" element={<AuthComplete />} />
+      <Route path="/approval-pending" element={<ApprovalPending />} />
+      <Route path="/profile/complete" element={<CompleteProfile />} />
+      <Route path="/onboarding/partner" element={<ProtectedRoute role="partner" allowPending><PartnerRegistration /></ProtectedRoute>} />
+      <Route path="/onboarding/expert" element={<ProtectedRoute role="expert" allowPending><ExpertProfile /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Route>
 
-    {/* TODO(Clerk): wrap this branch with a Clerk customer route guard later. */}
-    <Route path="/customer" element={<DashboardLayout />}>
+    <Route path="/customer" element={<ProtectedRoute role="customer"><DashboardLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<CustomerDashboard />} />
       <Route path="applications" element={<MyApplications />} />
@@ -113,8 +121,7 @@ const AppRoutes = () => (
       <Route path="notifications" element={<NotificationsPage />} />
     </Route>
 
-    {/* TODO(auth): wrap this branch with the future expert route guard. */}
-    <Route path="/expert" element={<DashboardLayout />}>
+    <Route path="/expert" element={<ProtectedRoute role="expert"><DashboardLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<ExpertDashboard />} />
       <Route path="applications" element={<ExpertApplications />} />
@@ -122,8 +129,7 @@ const AppRoutes = () => (
       <Route path="profile" element={<ExpertProfile />} />
       <Route path="notifications" element={<NotificationsPage />} />
     </Route>
-    {/* TODO(auth): replace development partner auth with the future production guard. */}
-    <Route path="/partner" element={<DashboardLayout />}>
+    <Route path="/partner" element={<ProtectedRoute role="partner"><DashboardLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<PartnerDashboard />} />
       <Route path="register" element={<PartnerRegistration />} />
@@ -149,8 +155,7 @@ const AppRoutes = () => (
       <Route path="profile" element={<PartnerProfile />} />
     </Route>
 
-    {/* TODO(Clerk): wrap this branch with a Clerk admin route guard later. */}
-    <Route path="/admin" element={<DashboardLayout />}>
+    <Route path="/admin" element={<ProtectedRoute role="admin"><DashboardLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="dashboard" replace />} />
       <Route path="dashboard" element={<AdminDashboard />} />
       <Route path="applications" element={<AdminApplications />} />

@@ -1,9 +1,9 @@
 import express from "express";
 import * as controller from "../controllers/adminDashboardModuleController.js";
 import { ROLES } from "../constants/roleConstants.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
 const router = express.Router();
-router.use(developmentAuth, requireRole(ROLES.ADMIN));
+router.use(requireAuth, requireRole(ROLES.ADMIN));
 router.get("/resources/:type", controller.resources);
 router.post("/resources/:type", controller.createResource);
 router.patch("/resources/:type/:id", controller.updateResource);

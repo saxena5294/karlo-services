@@ -12,9 +12,9 @@ import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
 import { uploadSingleApplicationFile } from "../middlewares/uploadMiddleware.js";
 import { deleteDocument, downloadDocument, listDocuments, previewDocument, replaceDocument, uploadAdditionalDocument, verifyDocument } from "../controllers/documentController.js";
 import {
-  developmentAuth,
+  requireAuth,
   requireRole,
-} from "../middlewares/developmentAuthMiddleware.js";
+} from "../middlewares/authMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
 import * as workflowController from "../controllers/applicationWorkflowController.js";
 
@@ -22,52 +22,47 @@ const router = express.Router();
 
 router.get("/track/:applicationNumber", trackApplication);
 
-router.get("/:applicationId/documents", developmentAuth, listDocuments);
-router.get("/:applicationId/documents/:documentId/preview", developmentAuth, previewDocument);
-router.get("/:applicationId/documents/:documentId/download", developmentAuth, downloadDocument);
-router.patch("/:applicationId/documents/:documentId/verification", developmentAuth, verifyDocument);
-router.post("/:applicationId/documents/:documentId/replacement", developmentAuth, uploadSingleApplicationFile, replaceDocument);
-router.post("/:applicationId/documents", developmentAuth, uploadSingleApplicationFile, uploadAdditionalDocument);
-router.delete("/:applicationId/documents/:documentId", developmentAuth, requireRole(ROLES.ADMIN), deleteDocument);
-router.get("/:applicationId/workflow", developmentAuth, workflowController.workflow);
-router.post("/:applicationId/comments", developmentAuth, workflowController.createComment);
-router.patch("/:applicationId/comments/:commentId", developmentAuth, workflowController.updateComment);
-router.delete("/:applicationId/comments/:commentId", developmentAuth, workflowController.deleteComment);
+router.get("/:applicationId/documents", requireAuth, listDocuments);
+router.get("/:applicationId/documents/:documentId/preview", requireAuth, previewDocument);
+router.get("/:applicationId/documents/:documentId/download", requireAuth, downloadDocument);
+router.patch("/:applicationId/documents/:documentId/verification", requireAuth, verifyDocument);
+router.post("/:applicationId/documents/:documentId/replacement", requireAuth, uploadSingleApplicationFile, replaceDocument);
+router.post("/:applicationId/documents", requireAuth, uploadSingleApplicationFile, uploadAdditionalDocument);
+router.delete("/:applicationId/documents/:documentId", requireAuth, requireRole(ROLES.ADMIN), deleteDocument);
+router.get("/:applicationId/workflow", requireAuth, workflowController.workflow);
+router.post("/:applicationId/comments", requireAuth, workflowController.createComment);
+router.patch("/:applicationId/comments/:commentId", requireAuth, workflowController.updateComment);
+router.delete("/:applicationId/comments/:commentId", requireAuth, workflowController.deleteComment);
 
-// TODO(Clerk): protect with customer authentication and derive customerId from req.auth.
 router.get(
   "/customer/:customerId",
-  developmentAuth,
+  requireAuth,
   requireRole(ROLES.CUSTOMER),
   getCustomerApplications
 );
 
-// TODO(Clerk): protect all admin routes with admin role authorization.
-router.get("/admin", developmentAuth, requireRole(ROLES.ADMIN), getAdminApplications);
+router.get("/admin", requireAuth, requireRole(ROLES.ADMIN), getAdminApplications);
 router.patch(
   "/:applicationNumber/assign",
-  developmentAuth,
+  requireAuth,
   requireRole(ROLES.ADMIN),
   assignApplication
 );
 
-// TODO(Clerk): retain admin authorization when production authentication is connected.
 router.patch(
   "/:applicationNumber/status",
-  developmentAuth,
+  requireAuth,
   requireRole(ROLES.ADMIN),
   updateApplicationStatus
 );
 
-// TODO(Clerk): retain the current admin-only legacy details endpoint.
 router.get(
   "/:applicationNumber",
-  developmentAuth,
+  requireAuth,
   requireRole(ROLES.ADMIN),
   getApplicationDetails
 );
 
-// TODO(Clerk): attach customer identity from req.auth when signed-in submission is required.
-router.post("/:slug", developmentAuth, requireRole(ROLES.CUSTOMER), uploadApplicationFiles, submitApplication);
+router.post("/:slug", requireAuth, requireRole(ROLES.CUSTOMER), uploadApplicationFiles, submitApplication);
 
 export default router;

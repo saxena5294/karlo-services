@@ -1,16 +1,18 @@
 import express from "express";
 import * as controller from "../controllers/partnerController.js";
 import { ROLES } from "../constants/roleConstants.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
+import { requireApprovedPartnerAccount } from "../middlewares/approvalMiddleware.js";
 import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
 import { requireLeadMarketplace } from "../middlewares/featureFlagMiddleware.js";
 import { requireApprovedPartner } from "../middlewares/partnerApprovalMiddleware.js";
 
 const router = express.Router();
-router.use(developmentAuth, requireRole(ROLES.PARTNER));
+router.use(requireAuth, requireRole(ROLES.PARTNER));
 router.post("/register", controller.register);
 router.get("/profile", controller.profile);
 router.patch("/profile", controller.updateProfile);
+router.use(requireApprovedPartnerAccount);
 router.use(requireApprovedPartner);
 router.get("/dashboard-summary", controller.dashboardSummary);
 router.get("/leads", requireLeadMarketplace, controller.listLeads);

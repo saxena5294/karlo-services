@@ -1,13 +1,16 @@
 import express from "express";
 import * as controller from "../controllers/expertController.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
+import { requireApprovedExpertAccount } from "../middlewares/approvalMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
 import { uploadApplicationFiles } from "../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
-router.use(developmentAuth, requireRole(ROLES.EXPERT));
-router.get("/dashboard-summary", controller.getExpertDashboardSummary);
+router.use(requireAuth, requireRole(ROLES.EXPERT));
 router.get("/profile", controller.getExpertProfile);
+router.patch("/profile", controller.updateExpertProfile);
+router.use(requireApprovedExpertAccount);
+router.get("/dashboard-summary", controller.getExpertDashboardSummary);
 router.get("/applications", controller.getExpertApplications);
 router.get("/applications/:id", controller.getExpertApplicationById);
 router.patch("/applications/:id/status", controller.updateExpertApplicationStatus);

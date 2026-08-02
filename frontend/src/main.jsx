@@ -2,9 +2,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { ClerkProvider } from '@clerk/react'
+import AuthSessionBridge from './auth/AuthSessionBridge.jsx'
+
+const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <ClerkProvider publishableKey={publishableKey} signInUrl="/login" signUpUrl="/register" signInFallbackRedirectUrl="/auth/complete" signUpFallbackRedirectUrl="/auth/complete">
+      <AuthSessionBridge><App /></AuthSessionBridge>
+    </ClerkProvider>
   </StrictMode>,
 )

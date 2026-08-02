@@ -1,5 +1,16 @@
 import { useState } from "react";
 import { Link, NavLink } from "react-router-dom";
+import { useAuth, UserButton } from "@clerk/react";
+
+const SignedIn = ({ children }) => {
+  const { isLoaded, isSignedIn } = useAuth();
+  return isLoaded && isSignedIn ? children : null;
+};
+
+const SignedOut = ({ children }) => {
+  const { isLoaded, isSignedIn } = useAuth();
+  return isLoaded && !isSignedIn ? children : null;
+};
 
 const navigationLinks = [
   { name: "Home", path: "/" },
@@ -53,7 +64,7 @@ const Navbar = () => {
             ))}
           </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
+          <div className="hidden items-center gap-3 sm:flex"><SignedOut>
             <Link
               to="/login"
               className="rounded-lg px-4 py-2 font-semibold text-blue-700 transition hover:bg-blue-50"
@@ -67,6 +78,7 @@ const Navbar = () => {
             >
               Register
             </Link>
+            </SignedOut><SignedIn><Link to="/auth/complete" className="rounded-lg px-4 py-2 font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></SignedIn>
           </div>
 
           <button
@@ -101,7 +113,7 @@ const Navbar = () => {
               ))}
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
+            <SignedOut><div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
               <Link
                 to="/login"
                 onClick={closeMenu}
@@ -117,7 +129,7 @@ const Navbar = () => {
               >
                 Register
               </Link>
-            </div>
+            </div></SignedOut><SignedIn><div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-4"><Link to="/auth/complete" onClick={closeMenu} className="font-semibold text-blue-700">Dashboard</Link><UserButton afterSignOutUrl="/" /></div></SignedIn>
           </div>
         )}
       </nav>

@@ -1,12 +1,6 @@
-import dotenv from "dotenv";
-import { fileURLToPath } from "url";
-
+import "./config/environment.js";
 import app from "./app.js";
 import { connectDatabase } from "./config/database.js";
-
-dotenv.config({
-  path: fileURLToPath(new URL("../.env", import.meta.url)),
-});
 
 const PORT = process.env.PORT || 5000;
 

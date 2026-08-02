@@ -16,6 +16,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
+import { UserButton } from "@clerk/react";
 import { dashboardFeatures } from "../../config/dashboardFeatures";
 import DeclarationFormsMenu from "../declarations/DeclarationFormsMenu";
 
@@ -168,9 +169,7 @@ const DashboardSidebar = ({ isOpen, onClose, portal = "customer" }) => {
       </nav>
 
       <div className="border-t border-slate-200 p-4">
-        <p className="rounded-xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-          Development access is active. Clerk authentication will replace it later.
-        </p>
+        <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3"><UserButton afterSignOutUrl="/" /><span className="text-sm font-semibold text-slate-700">Account & sign out</span></div>
       </div>
     </aside>
   </>;

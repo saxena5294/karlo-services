@@ -100,7 +100,7 @@ const AdminSettings = () => {
         <button disabled={!workflow.statuses.length} className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40">Save lifecycle</button>
       </form>}
     </section>
-    <p className="text-xs text-slate-500">Development identity: {import.meta.env.VITE_DEV_ADMIN_USER_ID || "dev_admin_001"} (admin). TODO(Clerk): replace route-level development identity with production authentication.</p>
+    <p className="text-xs text-slate-500">This page is protected by a Clerk session and the administrator role stored in MongoDB.</p>
   </div>;
 };
 

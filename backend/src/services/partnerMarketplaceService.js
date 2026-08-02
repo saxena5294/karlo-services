@@ -7,6 +7,7 @@ import { ApplicationAssignment } from "../models/applicationAssignmentModel.js";
 import { ApplicationTimeline } from "../models/applicationTimelineModel.js";
 import { Lead } from "../models/leadModel.js";
 import { PARTNER_VERIFICATION_STATUSES, PartnerProfile } from "../models/partnerProfileModel.js";
+import { User } from "../models/userModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import { createApplicationNotification, getUserNotifications, sanitizeNotificationText } from "./notificationService.js";
 import { hasAllowedFileSignature, removeUploadedFiles, uploadBuffer, updatePartnerApplicationStatus } from "./applicationService.js";
@@ -115,7 +116,12 @@ export const registerPartnerProfile = async (partnerId, payload) => {
 export const createPartnerProfileByAdmin = async (payload) => {
   const data = createProfilePayload(payload.userId, payload, "approved");
   if (await PartnerProfile.exists({ userId: data.userId })) throw new ApiError(409, "Partner profile already exists");
-  return PartnerProfile.create(data);
+  const profile = await PartnerProfile.create(data);
+  await User.updateOne(
+    { clerkUserId: profile.userId },
+    { $set: { role: ROLES.PARTNER, status: "approved", "approval.status": "approved", "approval.reviewedAt": new Date() } },
+  );
+  return profile;
 };
 
 export const updatePartnerProfile = async (partnerId, payload) => {
@@ -155,6 +161,11 @@ export const updatePartnerVerification = async ({ id, verificationStatus }) => {
   if (!PARTNER_VERIFICATION_STATUSES.includes(verificationStatus)) throw new ApiError(400, "Invalid verification status");
   const profile = await PartnerProfile.findByIdAndUpdate(id, { $set: { verificationStatus } }, { returnDocument: "after", runValidators: true }).lean();
   if (!profile) throw new ApiError(404, "Partner profile not found");
+  const accountStatus = verificationStatus === "approved" ? "approved" : verificationStatus === "under_review" ? "pending" : verificationStatus;
+  await User.updateOne(
+    { clerkUserId: profile.userId, role: ROLES.PARTNER },
+    { $set: { status: accountStatus, "approval.status": verificationStatus === "under_review" ? "pending" : verificationStatus, "approval.reviewedAt": new Date() } },
+  );
   return profile;
 };
 

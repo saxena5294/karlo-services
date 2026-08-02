@@ -1,5 +1,7 @@
 # Karlo Services
 
+Authentication setup and role/approval architecture are documented in [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md).
+
 A MERN application for browsing digital services, submitting MongoDB-configured dynamic forms, uploading documents through the backend to Cloudinary, and tracking applications.
 
 ## Setup

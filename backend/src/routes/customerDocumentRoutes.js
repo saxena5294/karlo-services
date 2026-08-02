@@ -1,10 +1,10 @@
 import express from "express";
 import * as controller from "../controllers/customerDocumentController.js";
-import { developmentAuth } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth } from "../middlewares/authMiddleware.js";
 import { uploadCustomerDocument } from "../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
-router.use(developmentAuth);
+router.use(requireAuth);
 
 router.get("/types", controller.types);
 router.get("/my", controller.myDocuments);

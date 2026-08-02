@@ -5,6 +5,7 @@ export const getExpertDashboardSummary = async () => {
   return response.data;
 };
 export const getExpertProfile = async () => (await API.get("/expert/profile")).data;
+export const updateExpertProfile = async (payload) => (await API.patch("/expert/profile", payload)).data;
 export const uploadExpertCompletionDocuments = async (id, files) => {
   const formData = new FormData();
   files.forEach((file) => formData.append("completionDocuments", file));

@@ -5,13 +5,12 @@ import {
   markAllAsRead,
   markAsRead,
 } from "../controllers/notificationController.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
 import { ROLE_VALUES } from "../constants/roleConstants.js";
 
 const router = express.Router();
 
-// TODO(Clerk): replace developmentAuth; controllers continue reading req.auth.
-router.use(developmentAuth, requireRole(...ROLE_VALUES));
+router.use(requireAuth, requireRole(...ROLE_VALUES));
 
 router.get("/", getNotifications);
 router.get("/unread-count", getUnreadCount);

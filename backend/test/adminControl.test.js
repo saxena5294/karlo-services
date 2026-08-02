@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { AuditLog } from "../src/models/auditLogModel.js";
 import { ROLES } from "../src/constants/roleConstants.js";
-import { requireRole } from "../src/middlewares/developmentAuthMiddleware.js";
+import { requireRole } from "../src/middlewares/authMiddleware.js";
 import { sanitizeAuditValue } from "../src/services/auditService.js";
 
 test("non-admin identities receive a 403 from the shared admin role guard", () => {

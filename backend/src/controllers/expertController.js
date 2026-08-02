@@ -8,6 +8,9 @@ import {
   getExpertProfile as getExpertProfileService,
   uploadExpertCompletionDocuments,
 } from "../services/applicationService.js";
+import { ExpertProfile } from "../models/expertProfileModel.js";
+import { User } from "../models/userModel.js";
+import { ApiError } from "../utils/ApiError.js";
 
 export const getExpertDashboardSummary = async (req, res, next) => {
   try {
@@ -18,6 +21,23 @@ export const getExpertDashboardSummary = async (req, res, next) => {
 export const getExpertProfile = async (req, res, next) => {
   try { return res.status(200).json({ success: true, profile: await getExpertProfileService(req.auth.userId) }); }
   catch (error) { return next(error); }
+};
+
+export const updateExpertProfile = async (req, res, next) => {
+  try {
+    const allowed = ["displayName", "phone", "categories", "skills", "availability"];
+    const unexpected = Object.keys(req.body).filter((key) => !allowed.includes(key));
+    if (unexpected.length) throw new ApiError(400, `Expert cannot update: ${unexpected.join(", ")}`);
+    const updates = Object.fromEntries(allowed.filter((key) => key in req.body).map((key) => [key, req.body[key]]));
+    const profile = await ExpertProfile.findOneAndUpdate(
+      { userId: req.auth.userId },
+      { $set: updates },
+      { returnDocument: "after", runValidators: true },
+    ).lean();
+    if (!profile) throw new ApiError(404, "Expert profile not found");
+    await User.updateOne({ clerkUserId: req.auth.userId }, { $set: { name: profile.displayName, mobile: profile.phone } });
+    return res.json({ success: true, profile });
+  } catch (error) { return next(error); }
 };
 
 export const uploadCompletionDocuments = async (req, res, next) => {

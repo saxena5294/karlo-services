@@ -1,10 +1,10 @@
 import express from "express";
 import * as controller from "../controllers/dashboardModuleController.js";
 import { ROLES } from "../constants/roleConstants.js";
-import { developmentAuth, requireRole } from "../middlewares/developmentAuthMiddleware.js";
+import { requireAuth, requireRole } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
-router.use(developmentAuth, requireRole(ROLES.CUSTOMER, ROLES.PARTNER));
+router.use(requireAuth, requireRole(ROLES.CUSTOMER, ROLES.PARTNER));
 router.get("/software", controller.software);
 router.get("/declaration-forms", controller.declarations);
 router.get("/payments", controller.payments);

@@ -11,8 +11,8 @@ const expertProfileSchema = new mongoose.Schema(
     availability: { type: Boolean, default: true, index: true },
     status: {
       type: String,
-      enum: ["active", "inactive", "unavailable"],
-      default: "active",
+      enum: ["pending", "active", "inactive", "unavailable", "rejected", "suspended"],
+      default: "pending",
       index: true,
     },
     createdBy: { type: String, required: true, trim: true },

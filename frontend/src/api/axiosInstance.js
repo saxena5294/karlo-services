@@ -1,5 +1,5 @@
 import axios from "axios";
-import { resolveDevelopmentIdentity } from "../auth/developmentAuth";
+import { getClerkToken } from "../auth/clerkToken";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
@@ -7,18 +7,18 @@ const API = axios.create({
   timeout: 10000,
 });
 
-// TODO(Clerk): replace these development headers with Clerk token injection.
-if (import.meta.env.DEV) {
-  API.interceptors.request.use((config) => {
-    const identity = resolveDevelopmentIdentity({
-      pathname: window.location.pathname,
-      storage: window.localStorage,
-      env: import.meta.env,
-    });
-    config.headers.set("x-dev-user-id", identity.userId);
-    config.headers.set("x-dev-role", identity.role);
-    return config;
-  });
-}
+API.interceptors.request.use(async (config) => {
+  const token = await getClerkToken();
+  if (token) config.headers.set("Authorization", `Bearer ${token}`);
+  return config;
+});
+
+API.interceptors.response.use(undefined, (error) => {
+  if (error.response?.status === 401 && !window.location.pathname.startsWith("/login")) {
+    const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.assign(`/login?redirect=${redirect}`);
+  }
+  return Promise.reject(error);
+});
 
 export default API;

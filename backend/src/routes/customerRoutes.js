@@ -5,15 +5,14 @@ import {
   getCustomerDashboardSummary,
 } from "../controllers/customerController.js";
 import {
-  developmentAuth,
+  requireAuth,
   requireRole,
-} from "../middlewares/developmentAuthMiddleware.js";
+} from "../middlewares/authMiddleware.js";
 import { ROLES } from "../constants/roleConstants.js";
 
 const router = express.Router();
 
-// TODO(Clerk): replace developmentAuth with Clerk middleware; controllers stay unchanged.
-router.use(developmentAuth, requireRole(ROLES.CUSTOMER));
+router.use(requireAuth, requireRole(ROLES.CUSTOMER));
 
 router.get("/dashboard-summary", getCustomerDashboardSummary);
 router.get("/applications", getCustomerApplications);

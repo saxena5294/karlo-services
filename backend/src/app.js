@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { clerkMiddleware } from "@clerk/express";
 import healthRoutes from "./routes/healthRoutes.js";
 import serviceRoutes from "./routes/serviceRoutes.js";
 import applicationRoutes from "./routes/applicationRoutes.js";
@@ -17,6 +18,7 @@ import adminDashboardModuleRoutes from "./routes/adminDashboardModuleRoutes.js";
 import mobileVerificationRoutes from "./routes/mobileVerificationRoutes.js";
 import declarationFormRoutes from "./routes/declarationFormRoutes.js";
 import customerDocumentRoutes from "./routes/customerDocumentRoutes.js";
+import authRoutes from "./routes/authRoutes.js";
 import {
   errorMiddleware,
   notFoundMiddleware,
@@ -25,6 +27,9 @@ import {
 const app = express();
 app.disable("x-powered-by");
 app.use(helmet());
+const authorizedParties = (process.env.CLERK_AUTHORIZED_PARTIES || process.env.FRONTEND_URL || "http://localhost:5173")
+  .split(",").map((value) => value.trim()).filter(Boolean);
+app.use(clerkMiddleware({ authorizedParties }));
 
 app.use(
   cors({
@@ -38,6 +43,7 @@ app.use(
 
 app.use(express.json({ limit: "1mb" }));
 app.use("/api/health", healthRoutes);
+app.use("/api/auth", authRoutes);
 
 app.use("/api/services", serviceRoutes);
 app.use("/api/applications", applicationRoutes);

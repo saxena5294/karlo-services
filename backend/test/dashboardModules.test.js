@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DeclarationForm, PaymentRecord, Referral, RewardRecord, SoftwareAsset, SupportTicket } from "../src/models/dashboardModuleModels.js";
 import { ROLES } from "../src/constants/roleConstants.js";
-import { requireRole } from "../src/middlewares/developmentAuthMiddleware.js";
+import { requireRole } from "../src/middlewares/authMiddleware.js";
 
 test("dashboard financial records are role and user scoped", () => {
   assert.ok(PaymentRecord.schema.indexes().some(([fields]) => fields.userId === 1 && fields.userRole === 1));
