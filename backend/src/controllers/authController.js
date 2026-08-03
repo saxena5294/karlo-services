@@ -19,7 +19,7 @@ export const serializeAuthProfile = (profile) => ({
   updatedAt: profile.updatedAt,
 });
 
-export const me = (req, res) => res.json({ success: true, profile: serializeAuthProfile(req.userProfile) });
+export const me = (req, res) => res.json({ success: true, user: serializeAuthProfile(req.userProfile) });
 
 export const updateProfile = async (req, res, next) => {
   try {

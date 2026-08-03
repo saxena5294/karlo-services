@@ -8,17 +8,11 @@ const API = axios.create({
 });
 
 API.interceptors.request.use(async (config) => {
-  const token = await getClerkToken();
-  if (token) config.headers.set("Authorization", `Bearer ${token}`);
-  return config;
-});
-
-API.interceptors.response.use(undefined, (error) => {
-  if (error.response?.status === 401 && !window.location.pathname.startsWith("/login")) {
-    const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.assign(`/login?redirect=${redirect}`);
+  if (!config.headers.get("Authorization")) {
+    const token = await getClerkToken();
+    if (token) config.headers.set("Authorization", `Bearer ${token}`);
   }
-  return Promise.reject(error);
+  return config;
 });
 
 export default API;

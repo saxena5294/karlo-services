@@ -45,7 +45,7 @@ export const findOrCreateUserProfile = async (clerkUserId, client = clerkClient,
   return profile;
 };
 
-export const requireAuth = async (req, _res, next) => {
+const authenticateRequest = (allowBlockedAccount) => async (req, _res, next) => {
   try {
     const clerkAuth = getAuth(req, { acceptsToken: "session_token" });
     if (!clerkAuth.isAuthenticated || !clerkAuth.userId) {
@@ -53,7 +53,7 @@ export const requireAuth = async (req, _res, next) => {
     }
 
     const profile = await findOrCreateUserProfile(clerkAuth.userId);
-    assertAccountCanAuthenticate(profile);
+    if (!allowBlockedAccount) assertAccountCanAuthenticate(profile);
 
     req.auth = Object.freeze({
       userId: clerkAuth.userId,
@@ -72,6 +72,9 @@ export const requireAuth = async (req, _res, next) => {
     return next(error);
   }
 };
+
+export const requireAuth = authenticateRequest(false);
+export const resolveAuthProfile = authenticateRequest(true);
 
 export const optionalAuth = async (req, _res, next) => {
   try {

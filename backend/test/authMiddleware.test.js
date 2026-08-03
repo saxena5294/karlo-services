@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { PUBLIC_REGISTRATION_ROLES, ROLES } from "../src/constants/roleConstants.js";
 import { assertAccountCanAuthenticate, findOrCreateUserProfile, profileFromClerkUser, requireAdmin, requireCustomer, requireExpert, requirePartner, requireRole } from "../src/middlewares/authMiddleware.js";
 import { User } from "../src/models/userModel.js";
-import { serializeAuthProfile } from "../src/controllers/authController.js";
+import { me, serializeAuthProfile } from "../src/controllers/authController.js";
 
 const run = (middleware, req) => new Promise((resolve) => middleware(req, {}, resolve));
 
@@ -91,4 +91,15 @@ test("current-user response exposes MongoDB identity, role, status, and approval
   assert.equal(profile.role, ROLES.ADMIN);
   assert.equal(profile.status, "active");
   assert.equal(profile.approval.status, "approved");
+});
+
+test("current-user endpoint returns the authenticated MongoDB profile as user", () => {
+  const req = { userProfile: { _id: "mongo_123", clerkUserId: "user_123", role: ROLES.ADMIN, status: "active", approval: { status: "approved" } } };
+  let body;
+  me(req, { json: (payload) => { body = payload; } });
+  assert.equal(body.success, true);
+  assert.equal(body.user.clerkUserId, "user_123");
+  assert.equal(body.user.role, ROLES.ADMIN);
+  assert.equal(body.user.approval.status, "approved");
+  assert.equal(body.profile, undefined);
 });

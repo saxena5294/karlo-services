@@ -1,4 +1,4 @@
-let tokenProvider = async () => window.Clerk?.session?.getToken?.() || null;
+let tokenProvider = async () => null;
 
 export const setTokenProvider = (provider) => {
   tokenProvider = typeof provider === "function" ? provider : async () => null;
