@@ -4,13 +4,13 @@ Karlo Services uses Clerk only for registration, email verification, password re
 
 ## Request flow
 
-1. React obtains the active Clerk session token and sends it as `Authorization: Bearer <token>`.
+1. The application-wide `AuthProfileProvider` waits for Clerk to finish loading. For every signed-in session, it obtains the active Clerk token and calls `GET /api/auth/me` with `Authorization: Bearer <token>`.
 2. `clerkMiddleware` validates the session token and its authorized party.
 3. `requireAuth` resolves the Clerk user ID to the MongoDB `User` profile. The first authenticated request creates a customer profile if one does not exist.
 4. `requireCustomer`, `requirePartner`, `requireExpert`, or `requireAdmin` checks the MongoDB role. Partner and expert business routes additionally require an approved account.
 5. Existing services continue to receive the immutable Clerk ID through `req.auth.userId`, preserving ownership and assignment contracts.
 
-After sign-in, Clerk always returns to `/auth/redirect`, which loads `GET /api/auth/me` and routes from the MongoDB role. After sign-up, Clerk returns to `/auth/onboarding`, where the authenticated user chooses Customer, Partner, or Expert. Partner and Expert choices call protected backend onboarding endpoints; the browser never decides the persisted role by itself.
+Profile synchronization is not dependent on a particular route: the provider runs above the router, so a valid signed-in Clerk session creates or loads its MongoDB profile even if the user lands on a public page or refreshes a dashboard directly. `/auth/redirect` waits for that shared profile and then routes from its MongoDB role. After sign-up, Clerk returns to `/auth/onboarding`, where the authenticated user chooses Customer, Partner, or Expert. Partner and Expert choices call protected backend onboarding endpoints; the browser never decides the persisted role by itself.
 
 Clerk metadata is never read for a Karlo business role.
 

@@ -79,14 +79,11 @@ per-field limits and permits at most six additional documents.
 6. Open `/track`, submit the number, and confirm the service, status, and history appear.
 7. Confirm MongoDB contains the application and Cloudinary metadata, and that the actual file exists in Cloudinary under `karlo-services/<application-number>`.
 
-Login and registration are placeholders for a future Clerk integration.
+Login and registration use Clerk sessions. MongoDB remains authoritative for Karlo roles, approval state, and dashboard access; see `docs/AUTHENTICATION.md`.
 
-## Production preflight before authentication integration
+## Production authentication preflight
 
-The temporary development identity middleware deliberately returns HTTP 503 whenever
-`NODE_ENV=production`; production deployment is therefore blocked until a real auth
-provider is connected. Never enable `DEV_AUTH_ENABLED` in production. Use distinct,
-high-entropy `OTP_HASH_SECRET` and `OTP_TOKEN_SECRET` values, configure the SMS provider,
+Use distinct, high-entropy `OTP_HASH_SECRET` and `OTP_TOKEN_SECRET` values, configure the SMS provider,
 Cloudinary, MongoDB replica-set transactions, and an exact HTTPS `FRONTEND_URL`. The
 mobile verification token is stored hashed and consumed transactionally on successful
 application submission, so it cannot be replayed for another application.
@@ -106,7 +103,6 @@ record counts.
 
 ## Partner Marketplace development data
 
-The frontend automatically sends `dev_partner_001` while the Partner Dashboard is active.
 After services and at least one `partner` or `hybrid` application exist, run:
 
 ```powershell
@@ -140,10 +136,9 @@ Accepted application details are owner-scoped to `assignedPartnerId`.
 
 ## Admin Business Control Center
 
-The frontend automatically sends `dev_admin_001` while the Admin Dashboard is active. Admin
-pages are under `/admin`; all APIs are under `/api/admin` and use the shared admin role
-guard. Customer, expert, and partner development identities receive HTTP 403. Temporary
-development auth remains unavailable when `NODE_ENV=production`.
+Admin pages are under `/admin`; all APIs are under `/api/admin` and use the shared admin role
+guard. Customer, expert, and partner Clerk identities receive HTTP 403 when their MongoDB
+role does not authorize the operation.
 
 The admin module manages application assignments, expert capacity, partner verification,
 lead lifecycle, services and forms, reports, CMS content, non-secret settings, and redacted
