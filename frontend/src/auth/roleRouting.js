@@ -9,8 +9,10 @@ export const destinationForProfile = (profile) => {
   if (!profile?.role || !profile?.status) return null;
   if (unavailableStatuses.has(profile.status)) return "/account-unavailable";
   if (profile.approval?.status === "rejected") return "/account-unavailable";
-  if (["partner", "expert"].includes(profile.role)
-    && (profile.status !== "approved" || profile.approval?.status === "pending")) return "/approval-pending";
+  if (["partner", "expert"].includes(profile.role)) {
+    if (profile.status === "pending" || profile.approval?.status === "pending") return "/approval-pending";
+    if (!["active", "approved"].includes(profile.status) || profile.approval?.status !== "approved") return "/account-unavailable";
+  }
   return dashboardForRole(profile.role);
 };
 

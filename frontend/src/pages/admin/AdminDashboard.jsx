@@ -144,8 +144,10 @@ const AdminDashboard = () => {
     { title: "Today's Applications", value: summary.todayApplications, icon: Activity, accent: "amber", description: summary.todayApplications ? "Received since midnight" : "No applications received today", to: `/admin/applications?dateFrom=${localDate}&dateTo=${localDate}` },
     { title: "Processing", value: summary.processing, icon: Clock3, accent: "violet", description: summary.processing ? "Currently being processed" : "No applications in processing", to: "/admin/applications?status=Processing" },
     { title: "Completed", value: summary.completed, icon: CircleCheck, accent: "emerald", description: "Successfully completed", to: "/admin/applications?status=Completed" },
-    { title: "Active Customers", value: summary.totalCustomers, icon: Users, accent: "violet", description: "Customers using the platform", to: "/admin/customers" },
+    { title: "Total Customers", value: summary.totalCustomers, icon: Users, accent: "violet", description: `${summary.activeCustomers} active`, to: "/admin/customers" },
     { title: "Active Partners", value: summary.activePartners, icon: Handshake, accent: "emerald", description: "Approved service partners", to: "/admin/partners" },
+    { title: "Total Partners", value: summary.totalPartners, icon: Users, accent: "blue", description: `${summary.approvedPartners} approved`, to: "/admin/partners" },
+    { title: "Suspended Partners", value: summary.suspendedPartners, icon: Users, accent: "rose", description: summary.suspendedPartners ? "Access currently suspended" : "No suspended partners", to: "/admin/partners?status=suspended" },
   ];
   const applicationMetrics = [
     { title: "Submitted", value: summary.submitted, icon: FilePlus2, accent: "blue", description: "Awaiting initial review", to: "/admin/applications?status=Submitted" },
@@ -161,7 +163,8 @@ const AdminDashboard = () => {
     { title: "Active Services", value: summary.activeServices, icon: Wrench, accent: "blue", description: "Services visible to customers", to: "/admin/services" },
     { title: "Assigned Work", value: summary.assignedApplications, icon: FileText, accent: "blue", description: "Applications assigned to experts and partners", to: "/admin/applications" },
     { title: "Pending Document Requests", value: summary.pendingDocumentRequests, icon: FileClock, accent: "amber", description: "Applications waiting for customer documents", to: "/admin/applications?status=Documents%20Required" },
-    { title: "Pending Partner Approvals", value: summary.pendingPartnerApprovals, icon: Users, accent: "amber", description: summary.pendingPartnerApprovals ? "Requires admin review" : "No approvals pending" },
+    { title: "Pending Partner Approvals", value: summary.pendingPartnerApprovals, icon: Users, accent: "amber", description: summary.pendingPartnerApprovals ? "Requires admin review" : "No approvals pending", to: "/admin/partners?status=pending" },
+    { title: "Pending Expert Approvals", value: summary.pendingExpertApprovals, icon: UserCheck, accent: "amber", description: summary.pendingExpertApprovals ? "Requires admin review" : "No approvals pending", to: "/admin/experts?status=pending" },
   ];
   const quickActions = [
     { label: "New Service", description: "Add to the catalogue", icon: FilePlus2, to: "/admin/services/new" },

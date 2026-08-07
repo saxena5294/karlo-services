@@ -82,6 +82,8 @@ const adminNavigation = [
   { name: "Customer Documents", path: "/admin/customer-documents", icon: FileText },
   { name: "Experts", path: "/admin/experts", icon: Store },
   { name: "Partners", path: "/admin/partners", icon: Users },
+  { name: "Pending Partners", path: "/admin/partners?status=pending", icon: ClipboardList },
+  { name: "Pending Experts", path: "/admin/experts?status=pending", icon: ClipboardList },
   ...(dashboardFeatures.leadMarketplace ? [{ name: "Leads", path: "/admin/leads", icon: ListChecks }] : []),
   { name: "Services", path: "/admin/services", icon: Wrench },
   { name: "Reports", path: "/admin/reports", icon: BarChart3 },

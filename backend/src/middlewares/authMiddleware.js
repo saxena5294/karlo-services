@@ -61,6 +61,7 @@ const authenticateRequest = (allowBlockedAccount) => async (req, _res, next) => 
       sessionId: clerkAuth.sessionId,
       role: profile.role,
       status: profile.status,
+      approvalStatus: profile.approval?.status,
       profileId: String(profile._id),
     });
     req.userProfile = profile;

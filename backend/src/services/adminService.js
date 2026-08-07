@@ -268,34 +268,35 @@ export const requestAdminApplicationDocuments = async ({ id, remarks, adminUserI
 
 export const getAdminCustomers = async (query = {}) => {
   const { page, limit, skip } = paginate(query);
-  const match = { customerId: { $nin: [null, ""] } };
-  const pipeline = [
-    { $match: match },
-    { $sort: { createdAt: -1 } },
-    {
-      $group: {
-        _id: "$customerId",
-        name: { $first: { $ifNull: ["$formData.fullName", { $ifNull: ["$formData.applicantName", "Customer"] }] } },
-        email: { $first: { $ifNull: ["$formData.email", ""] } },
-        phone: { $first: { $ifNull: ["$formData.mobile", { $ifNull: ["$formData.phone", ""] }] } },
-        totalApplications: { $sum: 1 },
-        latestApplicationDate: { $max: "$createdAt" },
-        completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } },
-        activeApplications: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } },
-      },
-    },
-    { $project: { _id: 0, userId: "$_id", name: 1, email: 1, phone: 1, totalApplications: 1, latestApplicationDate: 1, completedApplications: 1, activeApplications: 1 } },
-  ];
+  const filter = { role: ROLES.CUSTOMER };
+  if (query.status) filter.status = query.status;
   if (query.search?.trim()) {
     const pattern = escapeRegex(query.search.trim());
-    pipeline.push({ $match: { $or: [{ userId: { $regex: pattern, $options: "i" } }, { name: { $regex: pattern, $options: "i" } }] } });
+    filter.$or = [
+      { clerkUserId: { $regex: pattern, $options: "i" } },
+      { name: { $regex: pattern, $options: "i" } },
+      { email: { $regex: pattern, $options: "i" } },
+      { mobile: { $regex: pattern, $options: "i" } },
+    ];
   }
-  const [rows] = await Application.aggregate([
-    ...pipeline,
-    { $facet: { data: [{ $sort: { latestApplicationDate: -1 } }, { $skip: skip }, { $limit: limit }], count: [{ $count: "total" }] } },
+  const [users, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    User.countDocuments(filter),
   ]);
-  const total = rows.count[0]?.total || 0;
-  return { customers: rows.data, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  const ids = users.map((user) => user.clerkUserId);
+  const counts = await Application.aggregate([
+    { $match: { $or: [{ customerUserId: { $in: ids } }, { customerId: { $in: ids } }] } },
+    { $addFields: { resolvedCustomerId: { $ifNull: ["$customerUserId", "$customerId"] } } },
+    { $group: { _id: "$resolvedCustomerId", totalApplications: { $sum: 1 }, latestApplicationDate: { $max: "$createdAt" }, lastActivity: { $max: "$updatedAt" }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "completed"]] }, 1, 0] } }, activeApplications: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } } } },
+  ]);
+  const countMap = new Map(counts.map((item) => [item._id, item]));
+  return {
+    customers: users.map((user) => {
+      const activity = countMap.get(user.clerkUserId) || {};
+      return { ...user, userId: user.clerkUserId, phone: user.mobile, totalApplications: activity.totalApplications || 0, completedApplications: activity.completedApplications || 0, activeApplications: activity.activeApplications || 0, latestApplicationDate: activity.latestApplicationDate || null, lastActivity: activity.lastActivity || user.updatedAt };
+    }),
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  };
 };
 
 export const getAdminExperts = async (query = {}) => {
@@ -316,32 +317,52 @@ export const getAdminExperts = async (query = {}) => {
     { $group: { _id: "$assignedExpertId", activeAssignments: { $sum: { $cond: [{ $in: ["$status", TERMINAL_STATUSES] }, 0, 1] } }, completedApplications: { $sum: { $cond: [{ $in: ["$status", ["Completed", "Delivered", "completed"]] }, 1, 0] } }, pendingApplications: { $sum: { $cond: [{ $in: ["$status", ["Assigned", "Documents Required", "Processing", "Approved", "processing", "under_review"]] }, 1, 0] } } } },
   ]);
   const countMap = new Map(counts.map((item) => [item._id, item]));
+  const accounts = await User.find({ clerkUserId: { $in: ids }, role: ROLES.EXPERT }).lean();
+  const accountMap = new Map(accounts.map((account) => [account.clerkUserId, account]));
   return {
-    experts: profiles.map((item) => { const countsForExpert = countMap.get(item.userId) || {}; const totalWork = (countsForExpert.completedApplications || 0) + (countsForExpert.pendingApplications || 0); return { ...item, activeAssignments: countsForExpert.activeAssignments || 0, completedApplications: countsForExpert.completedApplications || 0, pendingApplications: countsForExpert.pendingApplications || 0, completionRate: totalWork ? ((countsForExpert.completedApplications || 0) / totalWork) * 100 : 0 }; }),
+    experts: profiles.map((item) => { const countsForExpert = countMap.get(item.userId) || {}; const totalWork = (countsForExpert.completedApplications || 0) + (countsForExpert.pendingApplications || 0); return { ...item, account: accountMap.get(item.userId) || null, activeAssignments: countsForExpert.activeAssignments || 0, completedApplications: countsForExpert.completedApplications || 0, pendingApplications: countsForExpert.pendingApplications || 0, completionRate: totalWork ? ((countsForExpert.completedApplications || 0) / totalWork) * 100 : 0 }; }),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   };
 };
 
+export const getAdminExpertById = async (id) => {
+  if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Expert not found");
+  const expert = await ExpertProfile.findById(id).lean();
+  if (!expert) throw new ApiError(404, "Expert not found");
+  const [account, applications, approvalHistory] = await Promise.all([
+    User.findOne({ clerkUserId: expert.userId, role: ROLES.EXPERT }).lean(),
+    Application.find({ assignedExpertId: expert.userId }).select("applicationNumber status service createdAt updatedAt").populate("service", "title").sort({ createdAt: -1 }).limit(100).lean(),
+    AuditLog.find({ entityType: "expert", entityId: String(expert._id) }).sort({ createdAt: -1 }).limit(100).lean(),
+  ]);
+  return { expert, account, applications, approvalHistory };
+};
+
 export const createExpertProfile = async (payload, adminUserId) => {
   assertOnlyFields(payload, ["userId", "displayName", "email", "phone", "status", "categories", "skills", "availability"]);
+  const account = await User.findOne({ clerkUserId: String(payload.userId || "").trim() });
+  if (!account) throw new ApiError(409, "Expert must sign in once so a linked MongoDB user exists");
   const expert = await ExpertProfile.create({ ...payload, createdBy: adminUserId });
-  const accountStatus = expert.status === "active" || expert.status === "unavailable" ? "approved" : expert.status;
+  const accountStatus = expert.status === "active" || expert.status === "unavailable" ? "active" : expert.status;
+  const approvalStatus = ["active", "inactive", "unavailable", "suspended"].includes(expert.status) ? "approved" : expert.status;
   await User.updateOne(
     { clerkUserId: expert.userId },
-    { $set: { role: ROLES.EXPERT, status: accountStatus, "approval.status": accountStatus === "approved" ? "approved" : accountStatus, "approval.reviewedBy": adminUserId, "approval.reviewedAt": new Date() } },
+    { $set: { role: ROLES.EXPERT, status: accountStatus, "approval.status": approvalStatus, "approval.reviewedBy": adminUserId, "approval.reviewedAt": new Date() } },
+    { runValidators: true },
   );
   return expert;
 };
 
-export const updateExpertProfile = async (id, payload) => {
+export const updateExpertProfile = async (id, payload, adminUserId) => {
   assertOnlyFields(payload, ["displayName", "email", "phone", "status", "categories", "skills", "availability"]);
   const expert = await ExpertProfile.findByIdAndUpdate(id, payload, { returnDocument: "after", runValidators: true }).lean();
   if (!expert) throw new ApiError(404, "Expert not found");
   if (payload.status) {
-    const accountStatus = payload.status === "active" ? "approved" : payload.status === "unavailable" ? "approved" : payload.status;
+    const accountStatus = payload.status === "active" || payload.status === "unavailable" ? "active" : payload.status;
+    const approvalStatus = ["active", "inactive", "unavailable", "suspended"].includes(payload.status) ? "approved" : payload.status;
     await User.updateOne(
       { clerkUserId: expert.userId, role: ROLES.EXPERT },
-      { $set: { status: accountStatus, "approval.status": accountStatus === "approved" ? "approved" : accountStatus, "approval.reviewedAt": new Date() } },
+      { $set: { status: accountStatus, "approval.status": approvalStatus, "approval.reviewedBy": adminUserId, "approval.reviewedAt": new Date() } },
+      { runValidators: true },
     );
   }
   return expert;
@@ -490,14 +511,18 @@ export const getAdminReports = async () => {
 
 export const getAdminDashboardSummary = async () => {
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const [reports, activeServices, customers, experts, recent, activity, todayApplications, unassigned, expertAssigned, partnerAssigned, awaitingAdminReview, pendingDocumentRequests, pendingPartners, activePartners, activeExperts] = await Promise.all([
+  const [reports, activeServices, totalCustomers, activeCustomers, totalPartners, pendingPartners, approvedPartners, suspendedPartners, totalExperts, pendingExperts, approvedExperts, recent, activity, todayApplications, unassigned, expertAssigned, partnerAssigned, awaitingAdminReview, pendingDocumentRequests, activePartners, activeExperts] = await Promise.all([
     getAdminReports(),
     Service.countDocuments({ isActive: true }),
-    Application.aggregate([
-      { $match: { $or: [{ customerUserId: { $nin: [null, ""] } }, { customerId: { $nin: [null, ""] } }] } },
-      { $group: { _id: { $ifNull: ["$customerUserId", "$customerId"] } } },
-    ]),
-    ExpertProfile.countDocuments(),
+    User.countDocuments({ role: ROLES.CUSTOMER }),
+    User.countDocuments({ role: ROLES.CUSTOMER, status: "active" }),
+    User.countDocuments({ role: ROLES.PARTNER }),
+    User.countDocuments({ role: ROLES.PARTNER, "approval.status": "pending" }),
+    User.countDocuments({ role: ROLES.PARTNER, status: { $in: ["active", "approved"] }, "approval.status": "approved" }),
+    User.countDocuments({ role: ROLES.PARTNER, status: "suspended" }),
+    User.countDocuments({ role: ROLES.EXPERT }),
+    User.countDocuments({ role: ROLES.EXPERT, "approval.status": "pending" }),
+    User.countDocuments({ role: ROLES.EXPERT, status: { $in: ["active", "approved"] }, "approval.status": "approved" }),
     getAdminApplications({ page: 1, limit: 5 }),
     ApplicationTimeline.find().sort({ createdAt: -1 }).limit(8).populate("application", "applicationNumber").lean(),
     Application.countDocuments({ createdAt: { $gte: today } }),
@@ -506,7 +531,6 @@ export const getAdminDashboardSummary = async () => {
     Application.countDocuments({ assignmentType: "partner", status: { $nin: TERMINAL_STATUSES } }),
     Application.countDocuments({ status: APPLICATION_STATUSES.AWAITING_ADMIN_REVIEW }),
     Application.countDocuments({ status: APPLICATION_STATUSES.DOCUMENTS_REQUIRED }),
-    PartnerProfile.countDocuments({ verificationStatus: { $in: ["pending", "under_review"] } }),
     PartnerProfile.countDocuments({ verificationStatus: "approved", isActive: true }),
     ExpertProfile.countDocuments({ status: "active", availability: true }),
   ]);
@@ -525,13 +549,21 @@ export const getAdminDashboardSummary = async () => {
       completed: (statusMap.Completed || 0) + (statusMap.Delivered || 0) + (statusMap.completed || 0),
       rejected: (statusMap.Rejected || 0) + (statusMap.rejected || 0),
       activeServices,
-      totalCustomers: customers.length,
-      totalExperts: experts,
+      totalCustomers,
+      activeCustomers,
+      totalPartners,
+      pendingPartners,
+      approvedPartners,
+      suspendedPartners,
+      totalExperts,
+      pendingExperts,
+      approvedExperts,
       activeExperts,
       assignedApplications: expertAssigned + partnerAssigned,
       awaitingAdminReview,
       pendingDocumentRequests,
       pendingPartnerApprovals: pendingPartners,
+      pendingExpertApprovals: pendingExperts,
       activePartners,
     },
     recentApplications: recent.applications,

@@ -1,9 +1,10 @@
 import * as adminService from "../services/adminService.js";
 import { ApiError } from "../utils/ApiError.js";
-import { createPartnerProfileByAdmin, listPartnerProfilesForAdmin, publishApplicationLead, updatePartnerVerification } from "../services/partnerMarketplaceService.js";
+import { createPartnerProfileByAdmin, listPartnerProfilesForAdmin, listPendingPartnerApprovals, publishApplicationLead, updatePartnerVerification } from "../services/partnerMarketplaceService.js";
 import * as controlService from "../services/adminControlService.js";
 import { listAuditLogs, writeAuditLog } from "../services/auditService.js";
 import * as workflowService from "../services/applicationWorkflowService.js";
+import { changeCustomerStatus, decideExpertAccount, decidePartnerAccount } from "../services/accountLifecycleService.js";
 
 const validateBody = (req, allowed) => {
   const unexpected = Object.keys(req.body).filter((key) => !allowed.includes(key));
@@ -78,12 +79,33 @@ export const saveApplicationWorkflowConfiguration = send(async (req) => {
 });
 export const publishLead = send(async (req) => { validateBody(req, ["city", "pincode", "safeRequirementSummary", "leadPrice", "status", "expiresAt"]); const lead = await publishApplicationLead({ applicationId: req.params.id, adminUserId: req.auth.userId, payload: req.body }); await writeAuditLog({ req, action: lead.status === "open" ? "lead.publish" : "lead.draft", entityType: "lead", entityId: lead._id, summary: `${lead.status === "open" ? "Published" : "Saved"} lead for ${lead.applicationNumber}`, after: lead }); return { lead }; }, 201);
 export const listPartners = send(async (req) => listPartnerProfilesForAdmin(req.query));
-export const verifyPartner = send(async (req) => { validateBody(req, ["verificationStatus"]); const partner = await updatePartnerVerification({ id: req.params.id, verificationStatus: req.body.verificationStatus }); await writeAuditLog({ req, action: "partner.verification", entityType: "partner", entityId: partner._id, summary: `Partner verification changed to ${partner.verificationStatus}`, after: { verificationStatus: partner.verificationStatus } }); return { partner }; });
+export const verifyPartner = send(async (req) => { validateBody(req, ["verificationStatus", "note"]); const partner = await updatePartnerVerification({ id: req.params.id, verificationStatus: req.body.verificationStatus, adminUserId: req.auth.userId, note: req.body.note }); await writeAuditLog({ req, action: "partner.verification", entityType: "partner", entityId: partner._id, summary: `Partner verification changed to ${partner.verificationStatus}`, after: { verificationStatus: partner.verificationStatus, note: req.body.note } }); return { partner }; });
 export const listCustomers = send(async (req) => adminService.getAdminCustomers(req.query));
 export const listExperts = send(async (req) => adminService.getAdminExperts(req.query));
+export const expertDetails = send(async (req) => adminService.getAdminExpertById(req.params.id));
 export const createExpert = send(async (req) => { const expert = await adminService.createExpertProfile(req.body, req.auth.userId); await writeAuditLog({ req, action: "expert.create", entityType: "expert", entityId: expert._id, summary: `Created expert ${expert.displayName}`, after: expert }); return { expert }; }, 201);
 export const createPartner = send(async (req) => { const partner = await createPartnerProfileByAdmin(req.body); await writeAuditLog({ req, action: "partner.create", entityType: "partner", entityId: partner._id, summary: `Created partner ${partner.businessName}`, after: partner }); return { partner }; }, 201);
-export const updateExpert = send(async (req) => { const expert = await adminService.updateExpertProfile(req.params.id, req.body); await writeAuditLog({ req, action: "expert.update", entityType: "expert", entityId: expert._id, summary: `Updated expert ${expert.displayName}`, after: expert }); return { expert }; });
+export const updateExpert = send(async (req) => { const expert = await adminService.updateExpertProfile(req.params.id, req.body, req.auth.userId); await writeAuditLog({ req, action: "expert.update", entityType: "expert", entityId: expert._id, summary: `Updated expert ${expert.displayName}`, after: expert }); return { expert }; });
+export const pendingPartnerApprovals = send(async (req) => listPendingPartnerApprovals(req.query));
+export const pendingExpertApprovals = send(async (req) => adminService.getAdminExperts({ ...req.query, status: "pending" }));
+export const decidePartner = send(async (req) => {
+  validateBody(req, ["decision", "note"]);
+  const result = await decidePartnerAccount({ id: req.params.id, decision: req.body.decision, note: req.body.note, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: `partner.${result.decision}`, entityType: "partner", entityId: result.partner._id, summary: `Partner ${result.decision} action completed`, after: { status: result.account.status, approval: result.account.approval, verificationStatus: result.partner.verificationStatus }, metadata: { note: result.note } });
+  return result;
+});
+export const decideExpert = send(async (req) => {
+  validateBody(req, ["decision", "note"]);
+  const result = await decideExpertAccount({ id: req.params.id, decision: req.body.decision, note: req.body.note, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: `expert.${result.decision}`, entityType: "expert", entityId: result.expert._id, summary: `Expert ${result.decision} action completed`, after: { status: result.account.status, approval: result.account.approval, profileStatus: result.expert.status }, metadata: { note: result.note } });
+  return result;
+});
+export const updateCustomerAccountStatus = send(async (req) => {
+  validateBody(req, ["status", "note"]);
+  const customer = await changeCustomerStatus({ id: req.params.id, status: req.body.status, note: req.body.note, adminUserId: req.auth.userId });
+  await writeAuditLog({ req, action: `customer.${customer.status}`, entityType: "customer", entityId: customer._id, summary: `Customer status changed to ${customer.status}`, after: { status: customer.status }, metadata: { note: req.body.note } });
+  return { customer };
+});
 export const listServices = send(async (req) => adminService.getAdminServices(req.query));
 export const createService = send(async (req) => { const service = await adminService.createAdminService(req.body); await writeAuditLog({ req, action: "service.create", entityType: "service", entityId: service._id, summary: `Created service ${service.title}`, after: service }); return { service }; }, 201);
 export const serviceDetails = send(async (req) => ({ service: await adminService.getAdminServiceById(req.params.id) }));

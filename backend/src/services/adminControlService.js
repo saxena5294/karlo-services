@@ -8,6 +8,7 @@ import { PartnerProfile } from "../models/partnerProfileModel.js";
 import { User } from "../models/userModel.js";
 import { PlatformSetting } from "../models/platformSettingModel.js";
 import { ApiError } from "../utils/ApiError.js";
+import { AuditLog } from "../models/auditLogModel.js";
 import { acceptLead, publishApplicationLead } from "./partnerMarketplaceService.js";
 import { sanitizeNotificationText } from "./notificationService.js";
 
@@ -37,25 +38,29 @@ export const listAssignments = async (query = {}) => {
 export const getCustomerDetails = async (userId) => {
   const id = String(userId || "").trim();
   if (!id) throw new ApiError(400, "Customer ID is required");
-  const applications = await Application.find({ $or: [{ customerUserId: id }, { customerId: id }] })
+  const customer = mongoose.isValidObjectId(id)
+    ? await User.findOne({ _id: id, role: "customer" }).lean()
+    : await User.findOne({ clerkUserId: id, role: "customer" }).lean();
+  if (!customer) throw new ApiError(404, "Customer not found");
+  const applications = await Application.find({ $or: [{ customerUserId: customer.clerkUserId }, { customerId: customer.clerkUserId }] })
     .select("applicationNumber service status fulfillmentType assignmentType createdAt updatedAt formData.fullName formData.applicantName formData.email formData.mobile formData.phone")
     .populate("service", "title category").sort({ createdAt: -1 }).lean();
-  if (!applications.length) throw new ApiError(404, "Customer not found");
-  const notifications = await Notification.find({ recipientUserId: id }).select("type title message isRead createdAt applicationNumber").sort({ createdAt: -1 }).limit(50).lean();
-  const first = applications[0].formData || {};
-  return { customer: { userId: id, name: first.fullName || first.applicantName || "Customer", email: first.email || "", phone: first.mobile || first.phone || "", firstActivityAt: applications.at(-1).createdAt, lastActivityAt: applications[0].updatedAt }, applications: applications.map(({ formData, ...item }) => item), notifications, paymentHistory: [], supportHistory: [] };
+  const notifications = await Notification.find({ recipientUserId: customer.clerkUserId }).select("type title message isRead createdAt applicationNumber").sort({ createdAt: -1 }).limit(50).lean();
+  return { customer: { ...customer, userId: customer.clerkUserId, phone: customer.mobile, firstActivityAt: applications.at(-1)?.createdAt || customer.createdAt, lastActivityAt: applications[0]?.updatedAt || customer.updatedAt, applicationCount: applications.length }, applications: applications.map(({ formData, ...item }) => item), notifications, paymentHistory: [], supportHistory: [] };
 };
 
 export const getPartnerAdminDetails = async (id) => {
   objectId(id, "Partner");
   const partner = await PartnerProfile.findById(id).select("+verificationDocuments").populate("servicesOffered", "title category").lean();
   if (!partner) throw new ApiError(404, "Partner not found");
-  const [leads, applications] = await Promise.all([
+  const [account, leads, applications, approvalHistory] = await Promise.all([
+    User.findOne({ clerkUserId: partner.userId, role: "partner" }).lean(),
     Lead.find({ acceptedByPartnerId: partner.userId }).sort({ createdAt: -1 }).limit(100).lean(),
     Application.find({ assignedPartnerId: partner.userId }).select("applicationNumber status service createdAt updatedAt").populate("service", "title").sort({ createdAt: -1 }).limit(100).lean(),
+    AuditLog.find({ entityType: "partner", entityId: String(partner._id) }).sort({ createdAt: -1 }).limit(100).lean(),
   ]);
   const completed = leads.filter((lead) => lead.status === "completed").length;
-  return { partner, leads, applications, performance: { accepted: leads.length, completed, acceptanceRate: partner.totalLeads ? (partner.acceptedLeads / partner.totalLeads) * 100 : 0, completionRate: leads.length ? (completed / leads.length) * 100 : 0 } };
+  return { partner, account, leads, applications, approvalHistory, performance: { accepted: leads.length, completed, acceptanceRate: partner.totalLeads ? (partner.acceptedLeads / partner.totalLeads) * 100 : 0, completionRate: leads.length ? (completed / leads.length) * 100 : 0 } };
 };
 
 export const updatePartnerAdmin = async (id, payload) => {

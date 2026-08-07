@@ -12,11 +12,14 @@ test("signed-in users are routed to the dashboard for their MongoDB role", () =>
 
 test("role resolution includes approval and inactive account states", () => {
   assert.equal(destinationForProfile({ role: "partner", status: "pending" }), "/approval-pending");
-  assert.equal(destinationForProfile({ role: "expert", status: "approved" }), "/expert/dashboard");
+  assert.equal(destinationForProfile({ role: "expert", status: "active", approval: { status: "approved" } }), "/expert/dashboard");
   assert.equal(destinationForProfile({ role: "admin", status: "active" }), "/admin/dashboard");
   assert.equal(destinationForProfile({ role: "customer", status: "active" }), "/customer/dashboard");
   assert.equal(destinationForProfile({ role: "partner", status: "rejected" }), "/account-unavailable");
-  assert.equal(destinationForProfile({ role: "expert", status: "approved", approval: { status: "rejected" } }), "/account-unavailable");
+  assert.equal(destinationForProfile({ role: "expert", status: "active", approval: { status: "rejected" } }), "/account-unavailable");
+  assert.equal(destinationForProfile({ role: "partner", status: "active", approval: { status: "pending" } }), "/approval-pending");
+  assert.equal(destinationForProfile({ role: "partner", status: "active", approval: { status: "approved" } }), "/partner/dashboard");
+  assert.equal(destinationForProfile({ role: "expert", status: "approved", approval: { status: "approved" } }), "/expert/dashboard");
   assert.equal(destinationForProfile(null), null);
 });
 

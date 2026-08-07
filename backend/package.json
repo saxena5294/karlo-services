@@ -17,6 +17,7 @@
     "migrate:application-documents": "node src/scripts/migrateApplicationDocumentMetadata.js",
     "promote:admin": "node src/scripts/promoteAdmin.js",
     "promote:admin:env": "node src/scripts/promoteAdmin.js --from-env",
+    "repair:partners": "node src/scripts/repairPartnerLifecycle.js",
     "legacy:seed-declarations": "node src/seed/declarationFormsSeed.js"
   },
   "keywords": [

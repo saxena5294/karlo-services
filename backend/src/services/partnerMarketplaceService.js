@@ -10,6 +10,7 @@ import { PARTNER_VERIFICATION_STATUSES, PartnerProfile } from "../models/partner
 import { User } from "../models/userModel.js";
 import { ApiError } from "../utils/ApiError.js";
 import { createApplicationNotification, getUserNotifications, sanitizeNotificationText } from "./notificationService.js";
+import { decidePartnerAccount } from "./accountLifecycleService.js";
 import { hasAllowedFileSignature, removeUploadedFiles, uploadBuffer, updatePartnerApplicationStatus } from "./applicationService.js";
 
 const DEFAULT_LIMIT = 20;
@@ -109,8 +110,22 @@ const createProfilePayload = (userId, payload, verificationStatus) => {
 };
 
 export const registerPartnerProfile = async (partnerId, payload) => {
-  if (await PartnerProfile.exists({ userId: partnerId.trim() })) throw new ApiError(409, "Partner profile already exists");
-  return PartnerProfile.create(createProfilePayload(partnerId, payload, "pending"));
+  const userId = partnerId.trim();
+  const account = await User.findOne({ clerkUserId: userId, role: ROLES.PARTNER });
+  if (!account) throw new ApiError(409, "Partner onboarding must be started before submitting a business profile");
+  if (account.approval?.status === "approved") throw new ApiError(409, "Approved partners must update their existing profile");
+  const data = createProfilePayload(userId, payload, "pending");
+  const profile = await PartnerProfile.findOneAndUpdate(
+    { userId },
+    { $set: data },
+    { upsert: true, returnDocument: "after", runValidators: true, setDefaultsOnInsert: true },
+  );
+  await User.updateOne(
+    { _id: account._id, role: ROLES.PARTNER },
+    { $set: { name: data.ownerName, mobile: data.mobile, ...(data.email ? { email: data.email } : {}), status: "pending", "approval.status": "pending", "approval.reviewedBy": "", "approval.reviewedAt": null, "approval.reason": "" } },
+    { runValidators: true },
+  );
+  return profile;
 };
 
 export const createPartnerProfileByAdmin = async (payload) => {
@@ -137,6 +152,13 @@ export const updatePartnerProfile = async (partnerId, payload) => {
     { $set: updates },
     { returnDocument: "after", runValidators: true }
   ).lean();
+  if (requiresReview) {
+    await User.updateOne(
+      { clerkUserId: partnerId.trim(), role: ROLES.PARTNER },
+      { $set: { status: "pending", "approval.status": "pending", "approval.reviewedBy": "", "approval.reviewedAt": null, "approval.reason": "Profile changes require review" } },
+      { runValidators: true },
+    );
+  }
   return profile;
 };
 
@@ -153,20 +175,63 @@ export const listPartnerProfilesForAdmin = async (query = {}) => {
     PartnerProfile.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     PartnerProfile.countDocuments(filter),
   ]);
-  return { partners, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+  const accounts = await User.find({ clerkUserId: { $in: partners.map((item) => item.userId) }, role: ROLES.PARTNER }).lean();
+  const accountMap = new Map(accounts.map((account) => [account.clerkUserId, account]));
+  return {
+    partners: partners.map((partner) => ({ ...partner, account: accountMap.get(partner.userId) || null })),
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  };
 };
 
-export const updatePartnerVerification = async ({ id, verificationStatus }) => {
+export const mergePendingPartnerAccounts = (accounts, profiles) => {
+  const profileMap = new Map(profiles.map((profile) => [profile.userId, profile]));
+  return accounts.map((account) => {
+    const profile = profileMap.get(account.clerkUserId);
+    return profile
+      ? { ...profile, account, onboardingComplete: true }
+      : { _id: null, userId: account.clerkUserId, ownerName: account.name, email: account.email, mobile: account.mobile, businessName: "Onboarding incomplete", verificationStatus: "pending", createdAt: account.createdAt, account, onboardingComplete: false };
+  });
+};
+
+export const listPendingPartnerApprovals = async (query = {}) => {
+  const { page, limit, skip } = paginate(query);
+  const filter = { role: ROLES.PARTNER, "approval.status": "pending" };
+  if (query.search?.trim()) {
+    const pattern = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = [
+      { name: { $regex: pattern, $options: "i" } },
+      { email: { $regex: pattern, $options: "i" } },
+      { mobile: { $regex: pattern, $options: "i" } },
+      { clerkUserId: { $regex: pattern, $options: "i" } },
+    ];
+  }
+  const [accounts, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    User.countDocuments(filter),
+  ]);
+  const profiles = await PartnerProfile.find({ userId: { $in: accounts.map((account) => account.clerkUserId) } }).lean();
+  return {
+    partners: mergePendingPartnerAccounts(accounts, profiles),
+    pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+  };
+};
+
+export const updatePartnerVerification = async ({ id, verificationStatus, adminUserId, note = "" }) => {
   if (!mongoose.isValidObjectId(id)) throw new ApiError(404, "Partner profile not found");
   if (!PARTNER_VERIFICATION_STATUSES.includes(verificationStatus)) throw new ApiError(400, "Invalid verification status");
-  const profile = await PartnerProfile.findByIdAndUpdate(id, { $set: { verificationStatus } }, { returnDocument: "after", runValidators: true }).lean();
-  if (!profile) throw new ApiError(404, "Partner profile not found");
-  const accountStatus = verificationStatus === "approved" ? "approved" : verificationStatus === "under_review" ? "pending" : verificationStatus;
-  await User.updateOne(
-    { clerkUserId: profile.userId, role: ROLES.PARTNER },
-    { $set: { status: accountStatus, "approval.status": verificationStatus === "under_review" ? "pending" : verificationStatus, "approval.reviewedAt": new Date() } },
-  );
-  return profile;
+  if (verificationStatus === "pending" || verificationStatus === "under_review") {
+    const profile = await PartnerProfile.findById(id).lean();
+    if (!profile) throw new ApiError(404, "Partner profile not found");
+    const account = await User.findOneAndUpdate(
+      { clerkUserId: profile.userId, role: ROLES.PARTNER },
+      { $set: { status: "pending", "approval.status": "pending", "approval.reviewedBy": adminUserId, "approval.reviewedAt": new Date(), "approval.reason": String(note || "").trim().slice(0, 500) } },
+      { returnDocument: "after", runValidators: true },
+    );
+    if (!account) throw new ApiError(409, "Partner profile is not linked to a Partner user account");
+    return PartnerProfile.findByIdAndUpdate(id, { $set: { verificationStatus } }, { returnDocument: "after", runValidators: true }).lean();
+  }
+  const decision = { approved: "approve", rejected: "reject", suspended: "suspend" }[verificationStatus];
+  return (await decidePartnerAccount({ id, decision, adminUserId, note })).partner;
 };
 
 export const listAvailableLeads = async (partnerId, query = {}) => {

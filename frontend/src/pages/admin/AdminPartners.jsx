@@ -1,22 +1,62 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { createPartner, getAdminPartners, updatePartnerVerification } from "../../api/adminApi";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { decidePartner, getAdminPartners, getPendingPartnerApprovals } from "../../api/adminApi";
 import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
+import { formatDate } from "../../utils/dashboardFormatters";
 
-const initialPartner = { userId: "", businessName: "", ownerName: "", mobile: "", email: "", city: "", state: "", pincode: "", businessType: "" };
-const AdminPartners = () => {
-  const [partners, setPartners] = useState(null);
-  const [status, setStatus] = useState("");
-  const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const [form, setForm] = useState(initialPartner);
-  const [showCreate, setShowCreate] = useState(false);
-  useEffect(() => { let active = true; getAdminPartners({ verificationStatus: status || undefined, limit: 100 }).then((response) => active && setPartners(response.partners)).catch((requestError) => active && setError(requestError.response?.data?.message || "Unable to load partners.")); return () => { active = false; }; }, [status, refresh]);
-  const verify = async (item, verificationStatus) => { try { await updatePartnerVerification(item._id, verificationStatus); setRefresh((value) => value + 1); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to update partner."); } };
-  const submit = async (event) => { event.preventDefault(); setError(""); try { await createPartner(form); setForm(initialPartner); setShowCreate(false); setRefresh((value) => value + 1); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to create partner."); } };
-  return <div className="space-y-6"><div className="flex items-start justify-between gap-4"><div><h1 className="text-2xl font-bold">Partners</h1><p className="mt-1 text-slate-500">Approve website registrations or create an immediately active partner.</p></div><button onClick={() => setShowCreate((value) => !value)} className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">{showCreate ? "Cancel" : "Create partner"}</button></div>
-    {showCreate && <form onSubmit={submit} className="grid gap-3 rounded-2xl border bg-white p-5 shadow-sm sm:grid-cols-3">{Object.keys(initialPartner).map((key) => <label key={key} className="text-xs font-semibold capitalize">{key.replace(/([A-Z])/g, " $1")}<input required={key !== "email"} type={key === "email" ? "email" : "text"} value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-normal" /></label>)}<button className="rounded-lg bg-emerald-700 px-4 py-2 font-semibold text-white sm:col-span-3">Create active partner</button></form>}
-    <select value={status} onChange={(event) => setStatus(event.target.value)} className="rounded-xl border px-3 py-2"><option value="">All verification states</option>{["pending", "under_review", "approved", "rejected", "suspended"].map((value) => <option key={value}>{value}</option>)}</select>{error && <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}{!partners ? <LoadingSkeleton count={5} /> : !partners.length ? <EmptyState title="No partners" description="Partner applications will appear here." /> : <div className="grid gap-4 lg:grid-cols-2">{partners.map((item) => <article key={item._id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex justify-between gap-3"><div><Link to={`/admin/partners/${item._id}`} className="font-bold text-blue-700">{item.businessName}</Link><p className="text-xs text-slate-500">{item.city}, {item.state} · {item.userId}</p></div><span className="text-xs font-semibold uppercase">{item.verificationStatus}</span></div><select aria-label={`Verification for ${item.businessName}`} value={item.verificationStatus} onChange={(event) => verify(item, event.target.value)} className="mt-4 w-full rounded-lg border px-3 py-2 text-sm">{["pending", "under_review", "approved", "rejected", "suspended"].map((value) => <option key={value}>{value}</option>)}</select></article>)}</div>}</div>;
+const decisionsFor = (item) => {
+  if (!item.onboardingComplete && !item._id) return [];
+  return item.verificationStatus === "pending" || item.verificationStatus === "under_review"
+    ? ["approve", "reject"]
+    : item.account?.status === "active" ? ["suspend", "deactivate"] : ["activate"];
 };
+
+const AdminPartners = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = searchParams.get("status") || "";
+  const [partners, setPartners] = useState(null);
+  const [feedback, setFeedback] = useState({ type: "", message: "" });
+  const [busyId, setBusyId] = useState("");
+  const [notes, setNotes] = useState({});
+
+  const load = useCallback(() => {
+    const request = status === "pending"
+      ? getPendingPartnerApprovals({ limit: 100 })
+      : getAdminPartners({ verificationStatus: status || undefined, limit: 100 });
+    request.then((response) => setPartners(response.partners))
+      .catch((error) => setFeedback({ type: "error", message: error.response?.data?.message || "Unable to load partners." }));
+  }, [status]);
+  useEffect(load, [load]);
+
+  const act = async (item, decision) => {
+    setBusyId(item._id); setFeedback({ type: "", message: "" });
+    try {
+      const result = await decidePartner(item._id, decision, notes[item._id] || "");
+      setPartners((current) => current
+        .map((partner) => partner._id === item._id ? { ...partner, ...result.partner, account: result.account } : partner)
+        .filter((partner) => !status || partner.verificationStatus === status));
+      setFeedback({ type: "success", message: `${item.businessName} account updated successfully.` });
+    } catch (error) {
+      setFeedback({ type: "error", message: error.response?.data?.message || "Unable to update partner." });
+    } finally { setBusyId(""); }
+  };
+
+  return <div className="space-y-6">
+    <div><h1 className="text-2xl font-bold">Partners</h1><p className="mt-1 text-slate-500">Review synchronized Partner accounts and business profiles.</p></div>
+    <select value={status} onChange={(event) => setSearchParams(event.target.value ? { status: event.target.value } : {})} className="rounded-xl border px-3 py-2"><option value="">All verification states</option>{["pending", "under_review", "approved", "rejected", "suspended"].map((value) => <option key={value}>{value}</option>)}</select>
+    {feedback.message && <p role="status" className={`rounded-xl px-4 py-3 text-sm ${feedback.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{feedback.message}</p>}
+    {!partners ? <LoadingSkeleton count={5} /> : !partners.length
+      ? <EmptyState title="No partners" description="Partner onboarding submissions matching this filter will appear here." />
+      : <div className="grid gap-4 lg:grid-cols-2">{partners.map((item) => {
+        const rowId = item._id || item.account?._id || item.userId;
+        return <article key={rowId} className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="flex justify-between gap-3"><div>{item._id ? <Link to={`/admin/partners/${item._id}`} className="font-bold text-blue-700">{item.businessName}</Link> : <h2 className="font-bold">{item.businessName}</h2>}<p className="mt-1 text-sm text-slate-600">{item.ownerName || item.account?.name || "Partner"} · {item.mobile || item.account?.mobile || "No mobile"}</p><p className="text-xs text-slate-500">{item.email || item.account?.email || "No email"}{item.city ? ` · ${item.city}, ${item.state}` : " · Business profile not submitted"}</p></div><span className="h-fit rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold uppercase text-amber-800">{item.account?.approval?.status || item.verificationStatus}</span></div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div><span className="text-slate-400">Registered</span><p className="font-semibold">{formatDate(item.createdAt)}</p></div><div><span className="text-slate-400">Account</span><p className="font-semibold capitalize">{item.account?.status || "unlinked"}</p></div></div>
+          {!item._id ? <p className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">This account selected the Partner role but has not persisted its business profile. Ask the Partner to reopen and submit onboarding before approval.</p> : <><input value={notes[item._id] || ""} onChange={(event) => setNotes((current) => ({ ...current, [item._id]: event.target.value }))} maxLength={500} placeholder="Internal decision note (optional)" className="mt-4 w-full rounded-lg border px-3 py-2 text-sm" /><div className="mt-3 flex flex-wrap gap-2"><Link to={`/admin/partners/${item._id}`} className="rounded-lg border px-3 py-2 text-sm font-semibold text-blue-700">View</Link>{decisionsFor(item).map((decision) => <button key={decision} disabled={busyId === item._id} onClick={() => act(item, decision)} className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 ${decision === "approve" || decision === "activate" ? "bg-emerald-700 text-white" : decision === "reject" || decision === "suspend" ? "bg-rose-700 text-white" : "border"}`}>{busyId === item._id ? "Updating…" : decision[0].toUpperCase() + decision.slice(1)}</button>)}</div></>}
+        </article>;
+      })}</div>}
+  </div>;
+};
+
 export default AdminPartners;

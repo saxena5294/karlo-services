@@ -1,8 +1,9 @@
 import { Menu } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import NotificationBell from "../notifications/NotificationBell";
+import { dashboardTitleForPortal } from "./dashboardTitles";
 
-const getPageTitle = (pathname) => {
+const getPageTitle = (pathname, portal = "customer") => {
   if (/^\/admin\/applications\/[^/]+$/.test(pathname)) return "Application Details";
   if (pathname === "/admin/applications") return "Applications";
   if (pathname === "/admin/customers") return "Customers";
@@ -32,7 +33,7 @@ const getPageTitle = (pathname) => {
   if (pathname === "/customer/applications") return "My Applications";
   if (pathname === "/customer/profile") return "Profile";
   if (pathname === "/customer/notifications") return "Notifications";
-  return "Customer Dashboard";
+  return dashboardTitleForPortal(portal);
 };
 
 const DashboardHeader = ({ onMenuClick, portal = "customer", identity = null }) => {
@@ -50,7 +51,7 @@ const DashboardHeader = ({ onMenuClick, portal = "customer", identity = null }) 
       </button>
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">{portal} portal</p>
-        <h1 className="truncate text-xl font-bold sm:text-2xl">{getPageTitle(pathname)}</h1>
+        <h1 className="truncate text-xl font-bold sm:text-2xl">{getPageTitle(pathname, portal)}</h1>
       </div>
       {identity && <div className="ml-auto hidden items-center gap-3 sm:flex"><div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-blue-100 font-bold text-blue-700">{identity.photoUrl ? <img src={identity.photoUrl} alt="" className="h-full w-full object-cover" /> : identity.name?.slice(0, 1).toUpperCase()}</div><div><p className="text-sm font-bold">{identity.name}</p><p className="text-xs text-slate-500"><span className={identity.isOnline ? "text-emerald-600" : "text-slate-400"}>●</span> {identity.role} · {identity.assignedWorkCount ?? 0} assigned</p></div></div>}
       <div className="ml-3"><NotificationBell portal={portal} /></div>

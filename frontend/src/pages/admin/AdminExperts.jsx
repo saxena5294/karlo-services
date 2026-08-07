@@ -1,24 +1,59 @@
-import { useEffect, useState } from "react";
-import { createExpert, getAdminExperts, updateExpert } from "../../api/adminApi";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { decideExpert, getAdminExperts } from "../../api/adminApi";
 import EmptyState from "../../components/dashboard/EmptyState";
 import LoadingSkeleton from "../../components/dashboard/LoadingSkeleton";
+import { formatDate } from "../../utils/dashboardFormatters";
 
-const initialForm = { userId: "", displayName: "", email: "", phone: "", status: "active", categories: "", skills: "", availability: true };
-const splitList = (value) => value.split(",").map((item) => item.trim()).filter(Boolean);
-const statusOptions = ["pending", "active", "rejected", "suspended", "inactive", "unavailable"];
+const decisionsFor = (item) => item.status === "pending"
+  ? ["approve", "reject"]
+  : item.account?.status === "active" ? ["suspend", "deactivate"] : ["activate"];
 
 const AdminExperts = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = searchParams.get("status") || "";
   const [experts, setExperts] = useState(null);
-  const [form, setForm] = useState(initialForm);
   const [feedback, setFeedback] = useState({ type: "", message: "" });
-  const [refresh, setRefresh] = useState(0);
-  useEffect(() => { let active = true; getAdminExperts({ limit: 100 }).then((response) => active && setExperts(response.experts)).catch((error) => active && setFeedback({ type: "error", message: error.response?.data?.message || "Unable to load experts." })); return () => { active = false; }; }, [refresh]);
-  const submit = async (event) => { event.preventDefault(); try { await createExpert({ ...form, categories: splitList(form.categories), skills: splitList(form.skills) }); setForm(initialForm); setFeedback({ type: "success", message: "Expert profile created." }); setRefresh((value) => value + 1); } catch (error) { setFeedback({ type: "error", message: error.response?.data?.message || "Unable to create expert." }); } };
-  const update = async (expert, changes) => { try { await updateExpert(expert._id, changes); setRefresh((value) => value + 1); } catch (error) { setFeedback({ type: "error", message: error.response?.data?.message || "Unable to update expert." }); } };
+  const [busyId, setBusyId] = useState("");
+  const [notes, setNotes] = useState({});
 
-  return <div className="space-y-6"><div><h2 className="text-2xl font-bold">Experts</h2><p className="mt-1 text-slate-500">Review registrations, skills, availability, and workload.</p></div>{feedback.message && <p className={`rounded-xl px-4 py-3 text-sm ${feedback.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{feedback.message}</p>}
-    <form onSubmit={submit} className="grid gap-3 rounded-2xl border bg-white p-5 shadow-sm md:grid-cols-3"><h3 className="font-bold md:col-span-3">Register expert through the approved admin workflow</h3>{[["userId","Clerk user ID"],["displayName","Display name"],["email","Email"],["phone","Phone"],["categories","Categories (comma separated)"],["skills","Skills (comma separated)"]].map(([name,label]) => <label key={name} className="text-sm font-semibold">{label}<input required={["userId","displayName"].includes(name)} type={name === "email" ? "email" : "text"} value={form[name]} onChange={(event) => setForm({...form,[name]:event.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>)}<label className="text-sm font-semibold">Status<select value={form.status} onChange={(event) => setForm({...form,status:event.target.value})} className="mt-1 w-full rounded-xl border px-3 py-2.5">{statusOptions.filter((status) => status !== "pending").map((status) => <option key={status}>{status}</option>)}</select></label><label className="flex items-center gap-2 text-sm font-semibold"><input type="checkbox" checked={form.availability} onChange={(event) => setForm({...form,availability:event.target.checked})} /> Available for assignment</label><button className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white">Create expert</button></form>
-    {!experts ? <LoadingSkeleton count={4} /> : !experts.length ? <EmptyState title="No experts" description="No expert registrations have been received." /> : <div className="grid gap-4 lg:grid-cols-2">{experts.map((item) => <article key={item._id} className="rounded-2xl border bg-white p-5 shadow-sm"><div className="flex justify-between gap-4"><div><h3 className="font-bold">{item.displayName}</h3><p className="text-xs text-slate-500">{item.userId}</p></div><select aria-label={`Status for ${item.displayName}`} value={item.status} onChange={(event) => update(item,{status:event.target.value})} className="rounded-lg border px-2 text-sm">{statusOptions.map((status) => <option key={status}>{status}</option>)}</select></div><p className="mt-3 text-xs text-slate-500">Categories: {item.categories?.join(", ") || "Any"} · Skills: {item.skills?.join(", ") || "Not set"}</p><label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={item.availability ?? true} onChange={(event) => update(item,{availability:event.target.checked})} /> Available</label><div className="mt-5 grid grid-cols-4 gap-2 text-center text-xs"><div className="rounded-lg bg-blue-50 p-2"><strong className="block text-lg">{item.activeAssignments}</strong>Active</div><div className="rounded-lg bg-emerald-50 p-2"><strong className="block text-lg">{item.completedApplications}</strong>Done</div><div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg">{item.pendingApplications}</strong>Pending</div><div className="rounded-lg bg-violet-50 p-2"><strong className="block text-lg">{item.completionRate.toFixed(0)}%</strong>Rate</div></div></article>)}</div>}
+  const load = useCallback(() => {
+    getAdminExperts({ status: status || undefined, limit: 100 })
+      .then((response) => setExperts(response.experts))
+      .catch((error) => setFeedback({ type: "error", message: error.response?.data?.message || "Unable to load experts." }));
+  }, [status]);
+  useEffect(load, [load]);
+
+  const act = async (item, decision) => {
+    setBusyId(item._id); setFeedback({ type: "", message: "" });
+    try {
+      const result = await decideExpert(item._id, decision, notes[item._id] || "");
+      setExperts((current) => current
+        .map((expert) => expert._id === item._id ? { ...expert, ...result.expert, account: result.account } : expert)
+        .filter((expert) => !status || expert.status === status));
+      setFeedback({ type: "success", message: `${item.displayName} account updated successfully.` });
+    } catch (error) {
+      setFeedback({ type: "error", message: error.response?.data?.message || "Unable to update expert." });
+    } finally { setBusyId(""); }
+  };
+
+  return <div className="space-y-6">
+    <div><h2 className="text-2xl font-bold">Experts</h2><p className="mt-1 text-slate-500">Review synchronized Expert accounts, expertise, and approval state.</p></div>
+    <select value={status} onChange={(event) => setSearchParams(event.target.value ? { status: event.target.value } : {})} className="rounded-xl border px-3 py-2">
+      <option value="">All profile states</option>
+      {["pending", "active", "rejected", "suspended", "inactive", "unavailable"].map((value) => <option key={value}>{value}</option>)}
+    </select>
+    {feedback.message && <p role="status" className={`rounded-xl px-4 py-3 text-sm ${feedback.type === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{feedback.message}</p>}
+    {!experts ? <LoadingSkeleton count={4} /> : !experts.length
+      ? <EmptyState title="No experts" description="Expert onboarding submissions matching this filter will appear here." />
+      : <div className="grid gap-4 lg:grid-cols-2">{experts.map((item) => <article key={item._id} className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="flex justify-between gap-4"><div><h3 className="font-bold">{item.displayName}</h3><p className="mt-1 text-sm text-slate-600">{item.email || item.account?.email || "No email"} · {item.phone || item.account?.mobile || "No mobile"}</p><p className="text-xs text-slate-500">{item.userId}</p></div><span className="h-fit rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold uppercase text-amber-800">{item.status}</span></div>
+        <p className="mt-3 text-sm text-slate-600">Expertise: {[...(item.categories || []), ...(item.skills || [])].join(", ") || "Not provided"}</p>
+        <p className="mt-2 text-xs text-slate-500">Registered {formatDate(item.createdAt)} · Account {item.account?.status || "unlinked"}</p>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs"><div className="rounded-lg bg-blue-50 p-2"><strong className="block text-lg">{item.activeAssignments}</strong>Active</div><div className="rounded-lg bg-emerald-50 p-2"><strong className="block text-lg">{item.completedApplications}</strong>Done</div><div className="rounded-lg bg-amber-50 p-2"><strong className="block text-lg">{item.pendingApplications}</strong>Pending</div></div>
+        <input value={notes[item._id] || ""} onChange={(event) => setNotes((current) => ({ ...current, [item._id]: event.target.value }))} maxLength={500} placeholder="Internal decision note (optional)" className="mt-4 w-full rounded-lg border px-3 py-2 text-sm" />
+        <div className="mt-3 flex flex-wrap gap-2"><Link to={`/admin/experts/${item._id}`} className="rounded-lg border px-3 py-2 text-sm font-semibold text-blue-700">View</Link>{decisionsFor(item).map((decision) => <button key={decision} disabled={busyId === item._id} onClick={() => act(item, decision)} className={`rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 ${decision === "approve" || decision === "activate" ? "bg-emerald-700 text-white" : decision === "reject" || decision === "suspend" ? "bg-rose-700 text-white" : "border"}`}>{busyId === item._id ? "Updating…" : decision[0].toUpperCase() + decision.slice(1)}</button>)}</div>
+      </article>)}</div>}
   </div>;
 };
 

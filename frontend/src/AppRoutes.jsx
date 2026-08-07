@@ -32,10 +32,12 @@ const DashboardHelpPage = page(() => import("./pages/shared/DashboardHelpPage"))
 const AdminApplicationDetails = page(() => import("./pages/admin/AdminApplicationDetails"));
 const AdminApplications = page(() => import("./pages/admin/AdminApplications"));
 const AdminCustomers = page(() => import("./pages/admin/AdminCustomers"));
+const AdminCustomerDetails = page(() => import("./pages/admin/AdminCustomerDetails"));
 const AdminCustomerDocuments = page(() => import("./pages/admin/AdminCustomerDocuments"));
 const AdminDashboard = page(() => import("./pages/admin/AdminDashboard"));
 const AdminReports = page(() => import("./pages/admin/AdminReports"));
 const AdminExperts = page(() => import("./pages/admin/AdminExperts"));
+const AdminExpertDetails = page(() => import("./pages/admin/AdminExpertDetails"));
 const AdminServiceForm = page(() => import("./pages/admin/AdminServiceForm"));
 const AdminServices = page(() => import("./pages/admin/AdminServices"));
 const AdminSettings = page(() => import("./pages/admin/AdminSettings"));
@@ -181,7 +183,9 @@ const AppRoutes = () => (
       <Route path="crm/tickets/:id" element={<CrmTicketDetails />} />
       <Route path="crm/follow-ups" element={<CrmFollowUps />} />
       <Route path="customers" element={<AdminCustomers />} />
+      <Route path="customers/:id" element={<AdminCustomerDetails />} />
       <Route path="experts" element={<AdminExperts />} />
+      <Route path="experts/:id" element={<AdminExpertDetails />} />
       <Route path="partners" element={<AdminPartners />} />
       <Route path="partners/:id" element={<AdminPartnerDetails />} />
       {dashboardFeatures.leadMarketplace && <>

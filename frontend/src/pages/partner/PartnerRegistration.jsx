@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { registerPartner } from "../../api/partnerApi";
+import { useAuthProfile } from "../../auth/authProfileContext";
 
 const initial = { businessName: "", ownerName: "", mobile: "", email: "", city: "", state: "", pincode: "", businessType: "" };
 const PartnerRegistration = ({ onboarding = false }) => {
@@ -8,9 +9,10 @@ const PartnerRegistration = ({ onboarding = false }) => {
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
+  const { refreshProfile } = useAuthProfile();
   const submit = async (event) => {
     event.preventDefault(); setBusy(true); setFeedback("");
-    try { await registerPartner(form); setFeedback("Registration submitted. An admin must approve your profile before work can be assigned."); setForm(initial); if (onboarding) navigate("/approval-pending", { replace: true, state: { profile: { role: "partner", status: "pending" } } }); }
+    try { await registerPartner(form); const profile = await refreshProfile(); setFeedback("Registration submitted. An admin must approve your profile before work can be assigned."); setForm(initial); if (onboarding) navigate("/approval-pending", { replace: true, state: { profile } }); }
     catch (error) { setFeedback(error.response?.data?.message || "Unable to submit registration."); }
     finally { setBusy(false); }
   };
