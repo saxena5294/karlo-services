@@ -302,14 +302,37 @@ export const getAdminCustomers = async (query = {}) => {
 export const getAdminExperts = async (query = {}) => {
   const { page, limit, skip } = paginate(query);
   const filter = {};
-  if (query.status) filter.status = query.status;
+  const requestedStatus = String(query.status || "").trim().toLowerCase();
+  if (requestedStatus && requestedStatus !== "inactive") filter.status = requestedStatus === "approved" ? "active" : requestedStatus;
+  if (query.category?.trim()) {
+    const pattern = escapeRegex(query.category.trim());
+    filter.$or = [{ categories: { $regex: pattern, $options: "i" } }, { skills: { $regex: pattern, $options: "i" } }];
+  }
+  if (query.dateFrom || query.dateTo) {
+    filter.createdAt = {};
+    if (query.dateFrom) filter.createdAt.$gte = new Date(`${query.dateFrom}T00:00:00.000Z`);
+    if (query.dateTo) filter.createdAt.$lte = new Date(`${query.dateTo}T23:59:59.999Z`);
+    if (Object.values(filter.createdAt).some((date) => Number.isNaN(date.getTime()))) throw new ApiError(400, "Use valid YYYY-MM-DD date filters");
+  }
+  if (requestedStatus === "inactive" || requestedStatus === "approved" || query.approvalStatus) {
+    const accountFilter = { role: ROLES.EXPERT };
+    if (requestedStatus === "inactive") accountFilter.status = "inactive";
+    if (requestedStatus === "approved") accountFilter.status = "active";
+    if (query.approvalStatus) accountFilter["approval.status"] = query.approvalStatus;
+    const accounts = await User.find(accountFilter).select("clerkUserId").lean();
+    filter.userId = { $in: accounts.map((account) => account.clerkUserId) };
+  }
   if (query.search?.trim()) {
     const pattern = escapeRegex(query.search.trim());
-    filter.$or = [{ userId: { $regex: pattern, $options: "i" } }, { displayName: { $regex: pattern, $options: "i" } }];
+    const searchConditions = [{ userId: { $regex: pattern, $options: "i" } }, { displayName: { $regex: pattern, $options: "i" } }, { email: { $regex: pattern, $options: "i" } }, { phone: { $regex: pattern, $options: "i" } }];
+    filter.$and = [...(filter.$and || []), { $or: searchConditions }];
   }
-  const [profiles, total] = await Promise.all([
+  const [profiles, total, groupedCounts, approvedCount, inactiveCount] = await Promise.all([
     ExpertProfile.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     ExpertProfile.countDocuments(filter),
+    ExpertProfile.aggregate([{ $group: { _id: "$status", count: { $sum: 1 } } }]),
+    User.countDocuments({ role: ROLES.EXPERT, status: "active", "approval.status": "approved" }),
+    User.countDocuments({ role: ROLES.EXPERT, status: "inactive" }),
   ]);
   const ids = profiles.map((item) => item.userId);
   const counts = await Application.aggregate([
@@ -319,9 +342,11 @@ export const getAdminExperts = async (query = {}) => {
   const countMap = new Map(counts.map((item) => [item._id, item]));
   const accounts = await User.find({ clerkUserId: { $in: ids }, role: ROLES.EXPERT }).lean();
   const accountMap = new Map(accounts.map((account) => [account.clerkUserId, account]));
+  const statusCountMap = Object.fromEntries(groupedCounts.map((item) => [item._id, item.count]));
   return {
     experts: profiles.map((item) => { const countsForExpert = countMap.get(item.userId) || {}; const totalWork = (countsForExpert.completedApplications || 0) + (countsForExpert.pendingApplications || 0); return { ...item, account: accountMap.get(item.userId) || null, activeAssignments: countsForExpert.activeAssignments || 0, completedApplications: countsForExpert.completedApplications || 0, pendingApplications: countsForExpert.pendingApplications || 0, completionRate: totalWork ? ((countsForExpert.completedApplications || 0) / totalWork) * 100 : 0 }; }),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    statusCounts: { all: groupedCounts.reduce((sum, item) => sum + item.count, 0), pending: statusCountMap.pending || 0, under_review: 0, approved: approvedCount, rejected: statusCountMap.rejected || 0, suspended: statusCountMap.suspended || 0, inactive: inactiveCount },
   };
 };
 

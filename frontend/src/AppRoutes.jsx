@@ -185,8 +185,10 @@ const AppRoutes = () => (
       <Route path="customers" element={<AdminCustomers />} />
       <Route path="customers/:id" element={<AdminCustomerDetails />} />
       <Route path="experts" element={<AdminExperts />} />
+      <Route path="experts/pending" element={<Navigate to="/admin/experts?status=pending" replace />} />
       <Route path="experts/:id" element={<AdminExpertDetails />} />
       <Route path="partners" element={<AdminPartners />} />
+      <Route path="partners/pending" element={<Navigate to="/admin/partners?status=pending" replace />} />
       <Route path="partners/:id" element={<AdminPartnerDetails />} />
       {dashboardFeatures.leadMarketplace && <>
         <Route path="leads" element={<AdminLeads />} />

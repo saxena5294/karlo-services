@@ -21,8 +21,6 @@ export const publishApplicationLead = (id, data) => getData(API.post(`/admin/app
 export const getAdminCustomers = (params = {}) => getData(API.get("/admin/customers", { params }));
 export const getAdminCustomer = (id) => getData(API.get(`/admin/customers/${encodeURIComponent(id)}`));
 export const updateAdminCustomerStatus = (id, data) => getData(API.patch(`/admin/customers/${encodeURIComponent(id)}/status`, data));
-export const getPendingPartnerApprovals = (params = {}) => getData(API.get("/admin/approvals/partners", { params }));
-export const getPendingExpertApprovals = (params = {}) => getData(API.get("/admin/approvals/experts", { params }));
 export const getAdminExperts = (params = {}) => getData(API.get("/admin/experts", { params }));
 export const getAdminExpert = (id) => getData(API.get(`/admin/experts/${encodeURIComponent(id)}`));
 export const createExpert = (data) => getData(API.post("/admin/experts", data));
@@ -32,7 +30,7 @@ export const getAdminPartners = (params = {}) => getData(API.get("/admin/partner
 export const createPartner = (data) => getData(API.post("/admin/partners", data));
 export const getAdminPartner = (id) => getData(API.get(`/admin/partners/${encodeURIComponent(id)}`));
 export const updateAdminPartner = (id, data) => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}`, data));
-export const updatePartnerVerification = (id, verificationStatus) => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}/verification`, { verificationStatus }));
+export const updatePartnerVerification = (id, verificationStatus, note = "") => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}/verification`, { verificationStatus, note }));
 export const decidePartner = (id, decision, note = "") => getData(API.patch(`/admin/partners/${encodeURIComponent(id)}/decision`, { decision, note }));
 export const getAdminServices = (params = {}) => getData(API.get("/admin/services", { params }));
 export const createService = (data) => getData(API.post("/admin/services", data));

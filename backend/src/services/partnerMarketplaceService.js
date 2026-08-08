@@ -20,6 +20,31 @@ const paginate = (query = {}) => {
   return { page, limit, skip: (page - 1) * limit };
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const dateFilter = (query = {}) => {
+  if (!query.dateFrom && !query.dateTo) return undefined;
+  const createdAt = {};
+  if (query.dateFrom) createdAt.$gte = new Date(`${query.dateFrom}T00:00:00.000Z`);
+  if (query.dateTo) createdAt.$lte = new Date(`${query.dateTo}T23:59:59.999Z`);
+  if (Object.values(createdAt).some((date) => Number.isNaN(date.getTime()))) {
+    throw new ApiError(400, "Use valid YYYY-MM-DD date filters");
+  }
+  return createdAt;
+};
+
+const getPartnerStatusCounts = async () => {
+  const [profileCounts, all, pending, approved, inactive] = await Promise.all([
+    PartnerProfile.aggregate([{ $group: { _id: "$verificationStatus", count: { $sum: 1 } } }]),
+    User.countDocuments({ role: ROLES.PARTNER }),
+    User.countDocuments({ role: ROLES.PARTNER, "approval.status": "pending" }),
+    User.countDocuments({ role: ROLES.PARTNER, status: "active", "approval.status": "approved" }),
+    User.countDocuments({ role: ROLES.PARTNER, status: "inactive" }),
+  ]);
+  const counts = Object.fromEntries(profileCounts.map((item) => [item._id, item.count]));
+  return { all, pending, under_review: counts.under_review || 0, approved, rejected: counts.rejected || 0, suspended: counts.suspended || 0, inactive };
+};
+
 const getActiveProfile = async (partnerId, { requireApproval = false, session } = {}) => {
   const profile = await PartnerProfile.findOne({ userId: partnerId.trim(), isActive: true }).session(session || null);
   if (!profile) throw new ApiError(403, "An active partner profile is required");
@@ -163,23 +188,37 @@ export const updatePartnerProfile = async (partnerId, payload) => {
 };
 
 export const listPartnerProfilesForAdmin = async (query = {}) => {
+  const requestedStatus = String(query.status || query.verificationStatus || "").trim().toLowerCase();
+  if (requestedStatus === "pending") return listPendingPartnerApprovals(query);
   const { page, limit, skip } = paginate(query);
   const filter = {};
-  if (query.verificationStatus) filter.verificationStatus = query.verificationStatus;
+  if (requestedStatus && requestedStatus !== "inactive") filter.verificationStatus = requestedStatus;
   if (query.city?.trim()) filter.city = query.city.trim();
-  if (query.search?.trim()) {
-    const pattern = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    filter.$or = [{ businessName: { $regex: pattern, $options: "i" } }, { ownerName: { $regex: pattern, $options: "i" } }, { userId: { $regex: pattern, $options: "i" } }];
+  const createdAt = dateFilter(query);
+  if (createdAt) filter.createdAt = createdAt;
+  if (requestedStatus === "inactive" || requestedStatus === "approved" || query.approvalStatus) {
+    const accountFilter = { role: ROLES.PARTNER };
+    if (requestedStatus === "inactive") accountFilter.status = "inactive";
+    if (requestedStatus === "approved") accountFilter.status = "active";
+    if (query.approvalStatus) accountFilter["approval.status"] = query.approvalStatus;
+    const accounts = await User.find(accountFilter).select("clerkUserId").lean();
+    filter.userId = { $in: accounts.map((account) => account.clerkUserId) };
   }
-  const [partners, total] = await Promise.all([
+  if (query.search?.trim()) {
+    const pattern = escapeRegex(query.search.trim());
+    filter.$or = [{ businessName: { $regex: pattern, $options: "i" } }, { ownerName: { $regex: pattern, $options: "i" } }, { email: { $regex: pattern, $options: "i" } }, { mobile: { $regex: pattern, $options: "i" } }, { userId: { $regex: pattern, $options: "i" } }];
+  }
+  const [partners, total, statusCounts] = await Promise.all([
     PartnerProfile.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     PartnerProfile.countDocuments(filter),
+    getPartnerStatusCounts(),
   ]);
   const accounts = await User.find({ clerkUserId: { $in: partners.map((item) => item.userId) }, role: ROLES.PARTNER }).lean();
   const accountMap = new Map(accounts.map((account) => [account.clerkUserId, account]));
   return {
     partners: partners.map((partner) => ({ ...partner, account: accountMap.get(partner.userId) || null })),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    statusCounts,
   };
 };
 
@@ -196,23 +235,34 @@ export const mergePendingPartnerAccounts = (accounts, profiles) => {
 export const listPendingPartnerApprovals = async (query = {}) => {
   const { page, limit, skip } = paginate(query);
   const filter = { role: ROLES.PARTNER, "approval.status": "pending" };
+  const createdAt = dateFilter(query);
+  if (createdAt) filter.createdAt = createdAt;
   if (query.search?.trim()) {
-    const pattern = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = escapeRegex(query.search.trim());
+    const matchingProfiles = await PartnerProfile.find({ $or: [
+      { businessName: { $regex: pattern, $options: "i" } },
+      { ownerName: { $regex: pattern, $options: "i" } },
+      { email: { $regex: pattern, $options: "i" } },
+      { mobile: { $regex: pattern, $options: "i" } },
+    ] }).select("userId").lean();
     filter.$or = [
       { name: { $regex: pattern, $options: "i" } },
       { email: { $regex: pattern, $options: "i" } },
       { mobile: { $regex: pattern, $options: "i" } },
       { clerkUserId: { $regex: pattern, $options: "i" } },
+      { clerkUserId: { $in: matchingProfiles.map((profile) => profile.userId) } },
     ];
   }
-  const [accounts, total] = await Promise.all([
+  const [accounts, total, statusCounts] = await Promise.all([
     User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     User.countDocuments(filter),
+    getPartnerStatusCounts(),
   ]);
   const profiles = await PartnerProfile.find({ userId: { $in: accounts.map((account) => account.clerkUserId) } }).lean();
   return {
     partners: mergePendingPartnerAccounts(accounts, profiles),
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    statusCounts,
   };
 };
 
